@@ -1,5 +1,6 @@
 from app import db
 from datetime import datetime
+from sqlalchemy.dialects.postgresql import JSONB
 
 class AssessmentAttempt(db.Model):
     __tablename__ = 'assessment_attempts'
@@ -10,7 +11,7 @@ class AssessmentAttempt(db.Model):
     start_time = db.Column(db.DateTime, nullable=False)
     end_time = db.Column(db.DateTime)
     status = db.Column(db.String(20), default='started')
-    performance_log = db.Column(db.JSONB)
+    performance_log = db.Column(JSONB)
 
     def __repr__(self):
         return f'<AssessmentAttempt {self.attempt_id} for Candidate {self.candidate_id}>'
