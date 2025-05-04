@@ -15,7 +15,7 @@ def create_app():
     app.secret_key = os.getenv("SECRET_KEY", "dev-secret-key")
 
     # Enable CORS
-    CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}})
+    CORS(app, supports_credentials=True)
 
     db.init_app(app)
     
@@ -33,10 +33,12 @@ def create_app():
     from app.routes.candidate import candidate_api_bp
     from app.routes.assessment import assessment_api_bp
     from app.routes.recruiter import recruiter_api_bp
+    from app.routes.auth import auth_bp
     
     app.register_blueprint(candidate_api_bp)
     app.register_blueprint(assessment_api_bp)
     app.register_blueprint(recruiter_api_bp)
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
     
     return app
 
