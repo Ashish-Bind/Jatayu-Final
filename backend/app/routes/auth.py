@@ -30,3 +30,22 @@ def login():
         session['role'] = user.role
         return jsonify({'message': 'Login successful', 'role': user.role})
     return jsonify({'error': 'Invalid credentials'}), 401
+
+@auth_bp.route('/check')
+def check_auth():
+    if 'user_id' in session:
+        user = User.query.get(session['user_id'])
+        if user:
+            return jsonify({
+                'user': {
+                    'id': user.id,
+                    'email': user.email,
+                    'role': user.role
+                }
+            })
+    return jsonify({'error': 'Not authenticated'}), 401
+
+@auth_bp.route('/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({'message': 'Logged out successfully'})
