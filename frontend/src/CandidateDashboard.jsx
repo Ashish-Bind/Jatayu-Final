@@ -86,15 +86,17 @@ const CandidateDashboard = () => {
         <h1 className="text-3xl font-bold">Candidate Dashboard</h1>
         <div className="flex items-center">
           {candidate.profile_picture ? (
-            <img
-              src={`http://localhost:5000/static/uploads/${candidate.profile_picture}`}
-              alt="Profile Picture"
-              className="w-12 h-12 rounded-full mr-4"
-              onError={(e) => {
-                e.target.src = 'https://via.placeholder.com/48';
-                e.target.alt = 'Failed to load profile picture';
-              }}
-            />
+            <Link to="/candidate/complete-profile">
+              <img
+                src={`http://localhost:5000/static/uploads/${candidate.profile_picture}`}
+                alt="Profile Picture"
+                className="w-12 h-12 rounded-full mr-4 cursor-pointer"
+                onError={(e) => {
+                  e.target.src = 'https://via.placeholder.com/48';
+                  e.target.alt = 'Failed to load profile picture';
+                }}
+              />
+            </Link>
           ) : (
             <Link to="/candidate/complete-profile" className="text-blue-500 hover:underline">
               <svg
