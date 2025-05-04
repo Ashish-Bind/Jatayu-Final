@@ -29,10 +29,10 @@ const CandidateLogin = () => {
     setError('')
 
     try {
-      const response = await login(email, password)
+      const response = await login(email, password, 'candidate')
 
       if (response) {
-        navigate('/candidate/dashboard')
+        navigate('/candidate/complete-profile')
       } else {
         setError('Invalid credentials')
       }

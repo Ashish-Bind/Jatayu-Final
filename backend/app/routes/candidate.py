@@ -208,9 +208,9 @@ def infer_proficiency(skill, work_experience, education, projects):
         logger.debug(f"Final proficiency for '{skill}': Beginner (4) with score {score}")
     return proficiency
 
-@candidate_api_bp.route('/profile/<int:candidate_id>', methods=['GET'])
-def get_profile(candidate_id):
-    candidate = Candidate.query.get_or_404(candidate_id)
+@candidate_api_bp.route('/profile/<int:user_id>', methods=['GET'])
+def get_profile_by_user(user_id):
+    candidate = Candidate.query.filter_by(user_id=user_id).first_or_404()
     return jsonify({
         'candidate_id': candidate.candidate_id,
         'name': candidate.name,
@@ -226,9 +226,9 @@ def get_profile(candidate_id):
         'is_profile_complete': candidate.is_profile_complete
     })
 
-@candidate_api_bp.route('/profile/<int:candidate_id>', methods=['POST'])
-def update_profile(candidate_id):
-    candidate = Candidate.query.get_or_404(candidate_id)
+@candidate_api_bp.route('/profile/<int:user_id>', methods=['POST'])
+def update_profile(user_id):
+    candidate = Candidate.query.get_or_404(user_id)
 
     try:
         # Handle form data
@@ -245,7 +245,7 @@ def update_profile(candidate_id):
         profile_pic_file = request.files.get('profile_picture')
         
         if resume_file:
-            resume_filename = f"resumes/{candidate_id}_{resume_file.filename}"
+            resume_filename = f"resumes/{user_id}_{resume_file.filename}"
             resume_path = os.path.join('app/static/uploads', resume_filename)
             resume_file.save(resume_path)
             candidate.resume = resume_filename
@@ -292,7 +292,7 @@ def update_profile(candidate_id):
 
                 # Check if the candidate already has this skill
                 existing_skill = CandidateSkill.query.filter_by(
-                    candidate_id=candidate_id,
+                    candidate_id=candidate.candidate_id,
                     skill_id=skill.skill_id
                 ).first()
 
@@ -302,14 +302,14 @@ def update_profile(candidate_id):
                 else:
                     # Add new skill entry
                     candidate_skill = CandidateSkill(
-                        candidate_id=candidate_id,
+                        candidate_id=candidate.candidate_id,
                         skill_id=skill.skill_id,
                         proficiency=proficiency
                     )
                     db.session.add(candidate_skill)
         
         if profile_pic_file:
-            profile_pic_filename = f"profile_pics/{candidate_id}_{profile_pic_file.filename}"
+            profile_pic_filename = f"profile_pics/{user_id}_{profile_pic_file.filename}"
             profile_pic_path = os.path.join('app/static/uploads', profile_pic_filename)
             profile_pic_file.save(profile_pic_path)
             candidate.profile_picture = profile_pic_filename
@@ -346,7 +346,7 @@ def get_eligible_assessments(candidate_id):
         # Check years of experience
         experience_match = (assessment.experience_min <= candidate.years_of_experience <= assessment.experience_max)
 
-        # Check degree (case-insensitive match, allowing for None in required_degree)
+        # Check degree (case-insensitive match, allowing for None in degree_required)
         degree_match = False
         if assessment.degree_required and candidate.degree:
             degree_match = assessment.degree_required.lower() == candidate.degree.lower()
@@ -360,7 +360,7 @@ def get_eligible_assessments(candidate_id):
                 'company': assessment.company,
                 'experience_min': assessment.experience_min,
                 'experience_max': assessment.experience_max,
-                'required_degree': assessment.degree_required,
+                'degree_required': assessment.degree_required,
                 'schedule': assessment.schedule.isoformat() if assessment.schedule else None,
                 'duration': assessment.duration,
                 'num_questions': assessment.num_questions,

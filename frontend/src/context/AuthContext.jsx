@@ -1,4 +1,3 @@
-// src/context/AuthContext.js
 import { createContext, useContext, useEffect, useState } from 'react'
 
 const AuthContext = createContext()
@@ -7,51 +6,60 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const response = await fetch('http://localhost:5000/api/auth/check', {
-          credentials: 'include',
-        })
+  const checkAuth = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/api/auth/check', {
+        credentials: 'include',
+      })
 
-        if (response.ok) {
-          const data = await response.json()
-          setUser(data.user)
-        } else {
-          setUser(null)
-        }
-      } catch (error) {
+      if (response.ok) {
+        const data = await response.json()
+        setUser(data.user)
+      } else {
         setUser(null)
-      } finally {
-        setLoading(false)
       }
+    } catch (error) {
+      setUser(null)
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     checkAuth()
   }, [])
 
-  const login = async (email, password) => {
-    const response = await fetch('http://localhost:5000/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ email, password }),
-    })
+  const login = async (email, password, role) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password, role }),
+      })
 
-    if (response.ok) {
-      const data = await response.json()
-      setUser(data.user)
-      return true
+      if (response.ok) {
+        // Fetch the latest user data from /check to ensure profile_img is included
+        await checkAuth()
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Login error:', error)
+      return false
     }
-    return false
   }
 
   const logout = async () => {
-    await fetch('http://localhost:5000/api/auth/logout', {
-      credentials: 'include',
-      method: 'POST',
-    })
-    setUser(null)
+    try {
+      await fetch('http://localhost:5000/api/auth/logout', {
+        credentials: 'include',
+        method: 'POST',
+      })
+      setUser(null)
+    } catch (error) {
+      console.error('Logout error:', error)
+    }
   }
 
   const value = {
@@ -59,6 +67,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     logout,
+    checkAuth,
   }
 
   return (

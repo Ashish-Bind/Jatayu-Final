@@ -20,7 +20,7 @@ const RecruiterLogin = () => {
 
   if (user) {
     navigate('/recruiter/dashboard')
-    return null
+    return
   }
 
   const handleSubmit = async (e) => {
@@ -28,10 +28,10 @@ const RecruiterLogin = () => {
     setError('')
 
     try {
-      const response = await login(email, password)
+      const response = await login(email, password, 'recruiter')
 
       if (response) {
-        navigate('/candidate/dashboard')
+        navigate('/recruiter/dashboard')
       } else {
         setError('Invalid credentials')
       }

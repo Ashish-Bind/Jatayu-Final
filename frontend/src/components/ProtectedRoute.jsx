@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext'
 const ProtectedRoute = ({ allowedRoles = [], redirectPath = '/' }) => {
   const { user } = useAuth()
 
+  console.log('User role:', user.role) // Add this line
+
   if (!user) {
     return <Navigate to={redirectPath} replace />
   }

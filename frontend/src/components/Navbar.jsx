@@ -1,6 +1,6 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
-import { Zap, Briefcase, User } from 'lucide-react'
+import { Zap, Briefcase, User, User2Icon } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 
@@ -61,7 +61,7 @@ const Navbar = ({ userType }) => {
                     to="/candidate/dashboard"
                     className="text-gray-700 hover:text-indigo-600 px-3 py-2 text-sm font-medium flex items-center"
                   >
-                    <User className="h-4 w-4 mr-1" /> Dashboard
+                    Dashboard
                   </Link>
                   <button
                     className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-indigo-600"
@@ -69,6 +69,19 @@ const Navbar = ({ userType }) => {
                   >
                     Logout
                   </button>
+                  {user.profile_img ? (
+                    <Link to="/candidate/complete-profile">
+                      <img
+                        src={`http://localhost:5000/static/uploads/${user.profile_img}`}
+                        alt="Profile"
+                        className="h-8 w-8 rounded-full object-cover"
+                      />
+                    </Link>
+                  ) : (
+                    <Link to="/candidate/complete-profile">
+                      <User className="h-8 w-8 rounded-full object-cover border" />
+                    </Link>
+                  )}
                 </>
               ) : user?.role === 'recruiter' ? (
                 <>
@@ -78,7 +91,11 @@ const Navbar = ({ userType }) => {
                   >
                     <Briefcase className="h-4 w-4 mr-1" /> Dashboard
                   </Link>
-
+                  <img
+                    src={user.profileImage || 'https://via.placeholder.com/32'}
+                    alt="Profile"
+                    className="h-8 w-8 rounded-full object-cover"
+                  />
                   <button
                     className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-indigo-600"
                     onClick={handleLogout}
