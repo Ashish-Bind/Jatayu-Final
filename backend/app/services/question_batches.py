@@ -1,18 +1,20 @@
 import wikipediaapi
-import faiss
 import numpy as np
 import time
-import random
+import os
+import re
 from sentence_transformers import SentenceTransformer
 import google.generativeai as genai
 from google.api_core.exceptions import TooManyRequests
-import os
-import json
+from app import db
+from app.models.skill import Skill
+from app.models.mcq import MCQ
 
-def prepare_question_batches():
-
+def prepare_question_batches(skills_with_priorities, jd_experience_range, job_id):
     # Configure Gemini AI API
-    api_key = "AIzaSyBSpjhnYk97Un4eTDcxs9I2oDosw7YNr6g"  # Replace with your actual Gemini key
+    api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY environment variable not set")
     genai.configure(api_key=api_key)
 
     generation_config = {
@@ -30,23 +32,6 @@ def prepare_question_batches():
         user_agent="MandviAIQuiz/1.0 (contact: mandvishukla20@gmail.com)", language='en'
     )
 
-    # Inputs
-    jd_skills = [
-        {"name": "Machine Learning", "priority": 3},
-        {"name": "Cloud Computing", "priority": 2},
-        {"name": "Data Science", "priority": 4},
-        {"name": "NLP", "priority": 5},
-        {"name": "Cybersecurity", "priority": 1}
-    ]
-
-    jd_experience_range = "3-6"
-    candidate_experience = 4.0
-    candidate_proficiency_per_skill = {
-        "Machine Learning": "mid",
-        "Data Science": "mid",
-        "NLP": "low"
-    }
-
     # Utility Functions
     def divide_experience_range(jd_range):
         start, end = map(float, jd_range.split("-"))
@@ -56,20 +41,6 @@ def prepare_question_batches():
             "better": (start + interval, start + 2 * interval),
             "perfect": (start + 2 * interval, end)
         }
-
-    def get_candidate_band(candidate_exp, jd_range):
-        band_ranges = divide_experience_range(jd_range)
-        for band, (low, high) in band_ranges.items():
-            if low <= candidate_exp <= high:
-                return band
-        return "good"
-
-    def get_weightage(proficiency):
-        return {
-            "low": (0.7, 0.3),
-            "mid": (0.5, 0.5),
-            "high": (0.3, 0.7)
-        }.get(proficiency, (0.5, 0.5))
 
     def expand_skills_with_gemini(skill):
         prompt = f"List 5 key subtopics under {skill} that are relevant for a technical interview. Only list the subskills."
@@ -81,7 +52,7 @@ def prepare_question_batches():
             return []
 
         if response and isinstance(response.text, str):
-            subtopics = [line.strip("- ") for line in response.text.split("\n") if line.strip()][:5]
+            subtopics = [line.strip("- ").strip() for line in response.text.split("\n") if line.strip()][:5]
             return subtopics
         return []
 
@@ -107,22 +78,109 @@ def prepare_question_batches():
     5. Include the correct answer at the end in the format: "Correct Answer: (B)"
     6. Format each question exactly like this:
     "Question text\n\n(A) Option A\n(B) Option B\n(C) Option C\n(D) Option D\n\nCorrect Answer: (B)"
+    7. Return the questions as a list of strings, separated by commas, enclosed in square brackets, e.g., ["question1...", "question2..."].
 
-    Return ONLY a Python list of 20 such formatted MCQs. No explanation, no extra text.
+    Return ONLY the list of 20 formatted MCQs. No extra text, no explanations, no code block markers (like ```json or ```python).
     """
         return prompt.strip()
+
+    def parse_question(question_text):
+        # Split the question text into lines
+        lines = [line.strip() for line in question_text.strip().split("\n") if line.strip()]
+        if len(lines) != 6:  # Expect exactly 6 lines (question, 4 options, correct answer)
+            print(f"Invalid question format (wrong number of lines, got {len(lines)}): {question_text}")
+            return None
+
+        question = lines[0]
+        # Extract options (remove "(A) ", "(B) ", etc.)
+        option_a = re.sub(r'^\(A\)\s*', '', lines[1])
+        option_b = re.sub(r'^\(B\)\s*', '', lines[2])
+        option_c = re.sub(r'^\(C\)\s*', '', lines[3])
+        option_d = re.sub(r'^\(D\)\s*', '', lines[4])
+        # Extract correct answer (e.g., "Correct Answer: (B)" -> "B")
+        correct_answer_line = lines[5]
+        match = re.match(r'Correct Answer:\s*\(([A-D])\)\s*$', correct_answer_line)
+        if not match:
+            print(f"Invalid correct answer format in line: '{correct_answer_line}'")
+            return None
+        correct_answer = match.group(1)
+
+        return {
+            "question": question,
+            "option_a": option_a,
+            "option_b": option_b,
+            "option_c": option_c,
+            "option_d": option_d,
+            "correct_answer": correct_answer
+        }
+
+    def parse_response(raw_text):
+        # Remove code block markers if present (e.g., ```json ... ``` or ```python ... ```)
+        raw_text = raw_text.strip()
+        raw_text = re.sub(r'^```(json|python)\s*\n', '', raw_text, flags=re.MULTILINE)
+        raw_text = re.sub(r'\n```$', '', raw_text, flags=re.MULTILINE)
+        raw_text = raw_text.strip()
+
+        # Check if the response is a list
+        if not (raw_text.startswith("[") and raw_text.endswith("]")):
+            print(f"⚠️ Response is not a list after cleaning: {raw_text}")
+            return []
+
+        content = raw_text[1:-1].strip()
+        if not content:
+            return []
+
+        # Manually parse the list by tracking quoted strings and commas
+        questions = []
+        current_question = []
+        inside_quote = False
+        current_line = ""
+
+        for char in content:
+            if char == '"':
+                inside_quote = not inside_quote
+                current_line += char
+            elif char == ',' and not inside_quote:
+                # End of a question string
+                if current_line:
+                    current_question.append(current_line.strip('"'))
+                    question_text = "\n".join(current_question)
+                    questions.append(question_text)
+                    current_question = []
+                    current_line = ""
+            else:
+                current_line += char
+                if char == "\n":
+                    current_question.append(current_line.strip())
+                    current_line = ""
+
+        # Handle the last question
+        if current_line:
+            current_question.append(current_line.strip('"'))
+            question_text = "\n".join(current_question)
+            questions.append(question_text)
+
+        return questions
 
     # Initialize
     band_ranges = divide_experience_range(jd_experience_range)
     knowledge_base = {}
     question_bank = {"good": {}, "better": {}, "perfect": {}}
-    faiss_indices = {"good": {}, "better": {}, "perfect": {}}
+    total_questions_saved = 0
 
-    for skill_data in jd_skills:
-        skill = skill_data["name"]
-        print(f"\n📌 Processing Skill: {skill} (Priority: {skill_data['priority']})")
-        subskills = expand_skills_with_gemini(skill)
-        all_topics = [skill] + subskills
+    for skill_data in skills_with_priorities:
+        skill_name = skill_data["name"]
+        print(f"\n📌 Processing Skill: {skill_name} (Priority: {skill_data['priority']})")
+
+        # Get skill_id from the database
+        skill = Skill.query.filter_by(name=skill_name).first()
+        if not skill:
+            print(f"⚠️ Skill {skill_name} not found in database. Skipping...")
+            continue
+        skill_id = skill.skill_id
+
+        subskills = expand_skills_with_gemini(skill_name)
+        all_topics = [skill_name] + subskills
 
         # Fetch and store Wikipedia summaries
         for topic in all_topics:
@@ -137,52 +195,58 @@ def prepare_question_batches():
 
         # Generate MCQ batches per band
         for band in ["good", "better", "perfect"]:
-            key = f"{skill}"
+            key = f"{skill_name}"
             if key not in question_bank[band]:
                 question_bank[band][key] = []
-                faiss_indices[band][key] = faiss.IndexFlatL2(384)
 
-            questions = []
-            embeddings = []
-
-            prompt = generate_questions_prompt(skill, subskills, band)
+            prompt = generate_questions_prompt(skill_name, subskills, band)
             try:
                 chat = model_gemini.start_chat(history=[{"role": "user", "parts": [prompt]}])
                 response = chat.send_message(prompt)
                 if response and isinstance(response.text, str):
                     raw_text = response.text.strip()
-                    if raw_text.startswith("[") and raw_text.endswith("]"):
-                        questions = json.loads(raw_text)
-                    else:
-                        questions = [q.strip() for q in raw_text.split("\n\n") if q.strip()]
-                    questions = questions[:20]  # Cap to 20
+                    questions = parse_response(raw_text)
 
+                    print(f"✅ [{band.upper()}] {skill_name}: {len(questions)} questions generated")
+
+                    # Parse and store questions in the database
                     for q in questions:
-                        emb = embedding_model.encode(q)
-                        embeddings.append(emb)
+                        parsed = parse_question(q)
+                        if not parsed:
+                            print(f"⚠️ Invalid question format for {skill_name} in {band} band: {q}")
+                            continue
 
-                    print(f"✅ [{band.upper()}] {skill}: {len(questions)} questions stored")
+                        try:
+                            mcq = MCQ(
+                                job_id=job_id,
+                                skill_id=skill_id,
+                                question=parsed["question"],
+                                option_a=parsed["option_a"],
+                                option_b=parsed["option_b"],
+                                option_c=parsed["option_c"],
+                                option_d=parsed["option_d"],
+                                correct_answer=parsed["correct_answer"],
+                                difficulty_band=band
+                            )
+                            db.session.add(mcq)
+                            total_questions_saved += 1
+                            print(f"Added MCQ: {parsed['question']} (Band: {band}, Correct Answer: {parsed['correct_answer']})")
+                        except Exception as e:
+                            print(f"⚠️ Error adding MCQ to session for {skill_name} in {band} band: {e}")
+                            print(f"MCQ data: {parsed}")
             except TooManyRequests:
                 print("⛔️ Gemini quota exceeded. Retrying in 10 seconds...")
                 time.sleep(10)
             except Exception as e:
-                print(f"⚠️ Error generating batch: {e}")
+                print(f"⚠️ Error generating batch for {skill_name} in {band} band: {e}")
             time.sleep(1.5)
 
-            question_bank[band][key] = questions
-            if embeddings:
-                faiss_indices[band][key].add(np.array(embeddings))
-                print(f"✅ FAISS index built for {skill} in {band} band.")
+    # Commit all questions to the database
+    try:
+        db.session.commit()
+        print(f"✅ {total_questions_saved} questions saved to the database.")
+    except Exception as e:
+        db.session.rollback()
+        print(f"⚠️ Error saving questions to database: {e}")
 
-    # Save to JSON
-    def save_question_batches_to_json(question_bank, directory="question_batches"):
-        os.makedirs(directory, exist_ok=True)
-        for band in ["good", "better", "perfect"]:
-            for skill, questions in question_bank[band].items():
-                filename = f"{directory}/{skill.replace(' ', '_')}_{band}.json"
-                with open(filename, "w") as f:
-                    json.dump(questions, f, indent=2)
-
-    save_question_batches_to_json(question_bank)
-    print("✅ Questions saved to JSON files in 'question_batches' folder.")
-    print("\n✅ All tasks completed!")
+    print("\n✅ Question generation completed!")

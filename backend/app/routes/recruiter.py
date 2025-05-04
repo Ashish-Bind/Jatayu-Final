@@ -1,29 +1,18 @@
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request
 from app import db
 from app.models.user import User
 from app.models.job import JobDescription, RequiredSkill
 from app.models.skill import Skill
 from datetime import datetime
+from app.services import question_batches
 
 recruiter_bp = Blueprint('recruiter', __name__)
 
-# Middleware to check if user is a recruiter
-def recruiter_required(f):
-    def wrap(*args, **kwargs):
-        if 'user_id' not in session or 'role' not in session:
-            return jsonify({"error": "Unauthorized: Please log in"}), 401
-        user = User.query.get(session['user_id'])
-        if user.role != 'recruiter':
-            return jsonify({"error": "Forbidden: Recruiter access required"}), 403
-        return f(*args, **kwargs)
-    wrap.__name__ = f.__name__
-    return wrap
-
 # Fetch past and active assessments
 @recruiter_bp.route('/assessments', methods=['GET'])
-# @recruiter_required
 def get_assessments():
-    recruiter_id = 1 #session['user_id']
+    # Temporarily hardcode recruiter_id for testing (replace with session['user_id'] after login is implemented)
+    recruiter_id = 1
     current_time = datetime.utcnow()
 
     # Fetch jobs (assessments) for the recruiter
@@ -56,10 +45,10 @@ def get_assessments():
 
 # Create a new assessment
 @recruiter_bp.route('/assessments', methods=['POST'])
-# @recruiter_required
 def create_assessment():
     data = request.json
-    recruiter_id = 1 #session['user_id']
+    # Temporarily hardcode recruiter_id for testing (replace with session['user_id'] after login is implemented)
+    recruiter_id = 1
 
     # Validate required fields
     required_fields = ['test_name', 'skills', 'experience_min', 'experience_max', 
@@ -104,7 +93,7 @@ def create_assessment():
             # Check if skill exists, otherwise create it
             skill = Skill.query.filter_by(name=skill_data['name']).first()
             if not skill:
-                skill = Skill(name=skill_data['name'], category='technical')  # Default category
+                skill = Skill(name=skill_data['name'], category='technical')
                 db.session.add(skill)
                 db.session.flush()
 
@@ -116,6 +105,20 @@ def create_assessment():
             db.session.add(required_skill)
 
         db.session.commit()
+
+        # Trigger question generation
+        try:
+            skills_with_priorities = [
+                {"name": skill_data['name'], "priority": priority_map[skill_data['priority'].lower()]}
+                for skill_data in data['skills']
+            ]
+            jd_experience_range = f"{data['experience_min']}-{data['experience_max']}"
+            question_batches.prepare_question_batches(skills_with_priorities, jd_experience_range, job.job_id)
+        except Exception as e:
+            print(f"⚠️ Error generating questions: {e}")
+            # Continue even if question generation fails (assessment is still created)
+            pass
+
         return jsonify({"message": "Assessment created successfully", "job_id": job.job_id}), 201
 
     except ValueError as e:
