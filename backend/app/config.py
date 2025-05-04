@@ -1,16 +1,24 @@
 import os
 from urllib.parse import quote
 
+
 class Config:
-    DB_NAME = os.getenv("DB_NAME")
-    DB_USER = os.getenv("DB_USER")
-    DB_PASSWORD = os.getenv("DB_PASSWORD")
-    DB_HOST = os.getenv("DB_HOST", "localhost")
-    DB_PORT = os.getenv("DB_PORT", 5432)
-    # Encode special characters in username and password
-    encoded_user = quote(DB_USER)
-    encoded_password = quote(DB_PASSWORD)
-    SQLALCHEMY_DATABASE_URI = (
-        f"postgresql://{encoded_user}:{encoded_password}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-    )
+    @staticmethod
+    def get_db_uri():
+        db_user = os.getenv("DB_USER")
+        db_password = os.getenv("DB_PASSWORD")
+        db_host = os.getenv("DB_HOST", "localhost")
+        db_port = os.getenv("DB_PORT", 5432)
+        db_name = os.getenv("DB_NAME")
+
+        # Debugging step: ensure values are loaded
+        if not db_user or not db_password or not db_name:
+            raise ValueError("Missing one or more required DB environment variables")
+
+        encoded_user = quote(db_user)
+        encoded_password = quote(db_password)
+
+        return f"postgresql://{encoded_user}:{encoded_password}@{db_host}:{db_port}/{db_name}"
+
+    SQLALCHEMY_DATABASE_URI = get_db_uri.__func__()
     SQLALCHEMY_TRACK_MODIFICATIONS = False

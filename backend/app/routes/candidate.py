@@ -5,7 +5,7 @@ from app.models.candidate import Candidate
 from app.models.job import JobDescription
 from app.models.assessment_attempt import AssessmentAttempt
 from app.models.skill import Skill
-from app.models.candidate_skills import CandidateSkill
+from app.models.candidate_skill import CandidateSkill
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 import google.generativeai as genai
