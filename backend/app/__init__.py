@@ -13,7 +13,7 @@ def create_app():
     app.secret_key = os.getenv("SECRET_KEY", "dev-secret-key")
 
     # Enable CORS
-    CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}})
+    CORS(app, resources={r"/api/*": {"origins": "http://localhost:5174"}})
 
     db.init_app(app)
 
