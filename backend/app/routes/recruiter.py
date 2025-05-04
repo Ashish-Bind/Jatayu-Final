@@ -1,29 +1,18 @@
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request
 from app import db
 from app.models.user import User
-from app.models.job import JobDescription, RequiredSkill
+from app.models.job import JobDescription
 from app.models.skill import Skill
 from datetime import datetime
+from app.services import question_batches
 
 recruiter_bp = Blueprint('recruiter', __name__)
 
-# Middleware to check if user is a recruiter
-def recruiter_required(f):
-    def wrap(*args, **kwargs):
-        if 'user_id' not in session or 'role' not in session:
-            return jsonify({"error": "Unauthorized: Please log in"}), 401
-        user = User.query.get(session['user_id'])
-        if user.role != 'recruiter':
-            return jsonify({"error": "Forbidden: Recruiter access required"}), 403
-        return f(*args, **kwargs)
-    wrap.__name__ = f.__name__
-    return wrap
-
 # Fetch past and active assessments
 @recruiter_bp.route('/assessments', methods=['GET'])
-# @recruiter_required
 def get_assessments():
-    recruiter_id = 1 #session['user_id']
+    # Temporarily hardcode recruiter_id for testing (replace with session['user_id'] after login is implemented)
+    recruiter_id = 1
     current_time = datetime.utcnow()
 
     # Fetch jobs (assessments) for the recruiter
@@ -56,10 +45,133 @@ def get_assessments():
 
 # Create a new assessment
 @recruiter_bp.route('/assessments', methods=['POST'])
-# @recruiter_required
-def create_assessment():
+def create_assessment():from flask import Blueprint, jsonify
+from app import db
+from app.models.job import JobDescription
+from app.models.assessment_registration import AssessmentRegistration
+from app.models.candidate import Candidate
+from app.models.required_skill import RequiredSkill
+from app.models.candidate_skill import CandidateSkill
+from app.models.skill import Skill
+from sqlalchemy import and_
+
+recruiter_api_bp = Blueprint('recruiter_api', __name__, url_prefix='/api/recruiter')
+
+@recruiter_api_bp.route('/assessments/<int:recruiter_id>', methods=['GET'])
+def get_assessments(recruiter_id):
+    assessments = JobDescription.query.filter_by(recruiter_id=recruiter_id).all()
+    return jsonify([{
+        'job_id': assessment.job_id,
+        'job_title': assessment.job_title,
+        'company': assessment.company,
+        'experience_min': assessment.experience_min,
+        'experience_max': assessment.experience_max,
+        'duration': assessment.duration,
+        'num_questions': assessment.num_questions,
+        'schedule': assessment.schedule.isoformat() if assessment.schedule else None,
+        'required_degree': assessment.degree_required,
+        'description': assessment.description
+    } for assessment in assessments]), 200
+
+@recruiter_api_bp.route('/candidates/<int:job_id>', methods=['GET'])
+def get_ranked_candidates(job_id):
+    # Fetch job details
+    job = JobDescription.query.get_or_404(job_id)
+    
+    # Fetch registered candidates
+    registrations = AssessmentRegistration.query.filter_by(job_id=job_id).all()
+    candidate_ids = [r.candidate_id for r in registrations]
+    candidates = Candidate.query.filter(Candidate.candidate_id.in_(candidate_ids)).all()
+    
+    # Fetch required skills for the job
+    required_skills = RequiredSkill.query.filter_by(job_id=job_id).all()
+    required_skill_dict = {
+        rs.skill_id: rs.priority for rs in required_skills
+    }
+    
+    # Fetch candidate skills
+    candidate_skills = CandidateSkill.query.filter(
+        and_(
+            CandidateSkill.candidate_id.in_(candidate_ids),
+            CandidateSkill.skill_id.in_(required_skill_dict.keys())
+        )
+    ).all()
+    
+    # Organize candidate skills
+    candidate_skill_map = {}
+    for cs in candidate_skills:
+        if cs.candidate_id not in candidate_skill_map:
+            candidate_skill_map[cs.candidate_id] = {}
+        candidate_skill_map[cs.candidate_id][cs.skill_id] = cs.proficiency
+    
+    # Calculate maximum possible skill score
+    max_proficiency = 8  # As per parsing.py (advanced=8)
+    max_skill_score = sum(required_skill_dict.values()) * max_proficiency
+    
+    # Rank candidates
+    ranked_candidates = []
+    for candidate in candidates:
+        # Skill match score
+        skill_score = 0
+        matched_skills = []
+        for skill_id, priority in required_skill_dict.items():
+            proficiency = candidate_skill_map.get(candidate.candidate_id, {}).get(skill_id, 0)
+            if proficiency > 0:
+                skill_name = Skill.query.get(skill_id).name
+                matched_skills.append(f"{skill_name} (Proficiency: {proficiency})")
+                skill_score += priority * proficiency
+        
+        skill_score_normalized = skill_score / max_skill_score if max_skill_score > 0 else 0
+        
+        # Experience score
+        exp_midpoint = (job.experience_min + job.experience_max) / 2
+        exp_range = job.experience_max - job.experience_min
+        exp_diff = abs(candidate.years_of_experience - exp_midpoint)
+        exp_score = max(0, 1 - (exp_diff / (exp_range / 2))) if exp_range > 0 else 1
+        
+        # Total score
+        total_score = (0.7 * skill_score_normalized) + (0.3 * exp_score)
+        
+        # Generate rank description
+        description = f"{candidate.name} is ranked based on "
+        if matched_skills:
+            description += f"strong skills in {', '.join(matched_skills)}"
+        else:
+            description += "limited skill matches"
+        description += f" and {candidate.years_of_experience} years of experience, which "
+        if exp_diff < 0.5:
+            description += "closely matches"
+        elif exp_diff < 1.5:
+            description += "reasonably matches"
+        else:
+            description += "is outside"
+        description += f" the job's {job.experience_min}-{job.experience_max} year requirement."
+        
+        ranked_candidates.append({
+            'candidate_id': candidate.candidate_id,
+            'name': candidate.name,
+            'email': candidate.email,
+            'total_score': round(total_score, 2),
+            'skill_score': round(skill_score_normalized, 2),
+            'experience_score': round(exp_score, 2),
+            'description': description
+        })
+    
+    # Sort by total score (descending)
+    ranked_candidates.sort(key=lambda x: x['total_score'], reverse=True)
+    
+    # Add rank numbers
+    for i, candidate in enumerate(ranked_candidates, 1):
+        candidate['rank'] = i
+    
+    return jsonify({
+        'job_id': job_id,
+        'job_title': job.job_title,
+        'candidates': ranked_candidates
+    }), 200
     data = request.json
-    recruiter_id = 1 #session['user_id']
+    # Temporarily hardcode recruiter_id for testing (replace with session['user_id'] after login is implemented)
+    recruiter_id = 1
 
     # Validate required fields
     required_fields = ['test_name', 'skills', 'experience_min', 'experience_max', 
@@ -104,7 +216,7 @@ def create_assessment():
             # Check if skill exists, otherwise create it
             skill = Skill.query.filter_by(name=skill_data['name']).first()
             if not skill:
-                skill = Skill(name=skill_data['name'], category='technical')  # Default category
+                skill = Skill(name=skill_data['name'], category='technical')
                 db.session.add(skill)
                 db.session.flush()
 
@@ -116,6 +228,20 @@ def create_assessment():
             db.session.add(required_skill)
 
         db.session.commit()
+
+        # Trigger question generation
+        try:
+            skills_with_priorities = [
+                {"name": skill_data['name'], "priority": priority_map[skill_data['priority'].lower()]}
+                for skill_data in data['skills']
+            ]
+            jd_experience_range = f"{data['experience_min']}-{data['experience_max']}"
+            question_batches.prepare_question_batches(skills_with_priorities, jd_experience_range, job.job_id)
+        except Exception as e:
+            print(f"⚠️ Error generating questions: {e}")
+            # Continue even if question generation fails (assessment is still created)
+            pass
+
         return jsonify({"message": "Assessment created successfully", "job_id": job.job_id}), 201
 
     except ValueError as e:
