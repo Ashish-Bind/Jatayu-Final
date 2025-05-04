@@ -22,6 +22,7 @@ def create_app():
     from app.models.job import JobDescription, RequiredSkill
     from app.models.skill import Skill
     from app.models.mcq import MCQ
+    from app.models.candidate_skills import CandidateSkill
 
     # Register blueprints
     from app.routes.auth import auth_bp
