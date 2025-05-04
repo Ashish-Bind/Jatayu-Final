@@ -2,7 +2,7 @@
 import { Navigate, Outlet } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
-const AuthRoute = ({ redirectPath = '/candidate/dashboard' }) => {
+const AuthRoute = ({ redirectPath = '/' }) => {
   const { user } = useAuth()
 
   if (user) {

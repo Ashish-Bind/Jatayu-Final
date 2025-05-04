@@ -31,7 +31,7 @@ const RecruiterLogin = () => {
       const response = await login(email, password, 'recruiter')
 
       if (response) {
-        navigate('/recruiter/dashboard')
+        navigate('/')
       } else {
         setError('Invalid credentials')
       }

@@ -332,9 +332,9 @@ def update_profile(user_id):
     except ValueError:
         return jsonify({'error': 'Please enter a valid number for years of experience.'}), 400
 
-@candidate_api_bp.route('/eligible-assessments/<int:candidate_id>', methods=['GET'])
-def get_eligible_assessments(candidate_id):
-    candidate = Candidate.query.get_or_404(candidate_id)
+@candidate_api_bp.route('/eligible-assessments/<int:user_id>', methods=['GET'])
+def get_eligible_assessments(user_id):
+    candidate = Candidate.query.filter_by(user_id=user_id).first_or_404()
 
     if not candidate.is_profile_complete:
         return jsonify([]), 200

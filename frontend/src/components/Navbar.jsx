@@ -91,17 +91,13 @@ const Navbar = ({ userType }) => {
                   >
                     <Briefcase className="h-4 w-4 mr-1" /> Dashboard
                   </Link>
-                  <img
-                    src={user.profileImage || 'https://via.placeholder.com/32'}
-                    alt="Profile"
-                    className="h-8 w-8 rounded-full object-cover"
-                  />
                   <button
                     className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-indigo-600"
                     onClick={handleLogout}
                   >
                     Logout
                   </button>
+                  <User className="h-8 w-8 rounded-full object-cover border" />
                 </>
               ) : (
                 <>

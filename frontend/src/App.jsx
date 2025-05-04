@@ -27,10 +27,17 @@ export default function App() {
       <Route element={<AuthRoute />}>
         <Route path="/candidate/login" element={<CandidateLogin />} />
         <Route path="/candidate/signup" element={<CandidateSignup />} />
+      </Route>
+
+      <Route element={<AuthRoute redirectPath="/recruiter/dashboard" />}>
         <Route path="/recruiter/login" element={<RecruiterLogin />} />
       </Route>
 
-      <Route element={<ProtectedRoute allowedRoles={['candidate']} />}>
+      <Route
+        element={
+          <ProtectedRoute allowedRoles={['candidate']} redirectPath="/" />
+        }
+      >
         <Route path="/candidate/dashboard" element={<CandidateDashboard />} />
         <Route
           path="/candidate/complete-profile"
@@ -42,7 +49,11 @@ export default function App() {
         />
       </Route>
 
-      <Route element={<ProtectedRoute allowedRoles={['recruiter']} />}>
+      <Route
+        element={
+          <ProtectedRoute allowedRoles={['recruiter']} redirectPath="/" />
+        }
+      >
         <Route path="/recruiter/dashboard" element={<RecruiterDashboard />} />
         <Route
           path="/recruiter/candidates/:jobId"

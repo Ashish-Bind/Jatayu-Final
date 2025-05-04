@@ -31,7 +31,10 @@ const CandidateDashboard = () => {
 
   useEffect(() => {
     // Fetch candidate data
-    fetch(`http://localhost:5000/api/candidate/profile/${user.id}`)
+    fetch(`http://localhost:5000/api/candidate/profile/${user.id}`, {
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    })
       .then((response) => response.json())
       .then((data) => {
         setCandidate(data)
@@ -42,7 +45,13 @@ const CandidateDashboard = () => {
       .catch((error) => console.error('Error fetching candidate:', error))
 
     // Fetch eligible assessments
-    fetch(`http://localhost:5000/api/candidate/eligible-assessments/${user.id}`)
+    fetch(
+      `http://localhost:5000/api/candidate/eligible-assessments/${user.id}`,
+      {
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      }
+    )
       .then((response) => response.json())
       .then((data) => setAssessments(data))
       .catch((error) => console.error('Error fetching assessments:', error))
