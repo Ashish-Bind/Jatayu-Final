@@ -22,12 +22,12 @@ class JobDescription(db.Model):
     recruiter = db.relationship('User', backref='job_descriptions')
     required_skills = db.relationship('RequiredSkill', backref='job', cascade='all, delete-orphan')
 
-class RequiredSkill(db.Model):
-    __tablename__ = 'required_skills'
+# # class RequiredSkill(db.Model):
+#     __tablename__ = 'required_skills'
     
-    job_id = db.Column(db.Integer, db.ForeignKey('job_descriptions.job_id'), primary_key=True)
-    skill_id = db.Column(db.Integer, db.ForeignKey('skills.skill_id'), primary_key=True)
-    priority = db.Column(db.Integer, nullable=False)  # 1 to 5
+#     job_id = db.Column(db.Integer, db.ForeignKey('job_descriptions.job_id'), primary_key=True)
+#     skill_id = db.Column(db.Integer, db.ForeignKey('skills.skill_id'), primary_key=True)
+#     priority = db.Column(db.Integer, nullable=False)  # 1 to 5
 
-    # Relationships
-    skill = db.relationship('Skill', backref='required_skills')
+#     # Relationships
+#     skill = db.relationship('Skill', backref='required_skills')
