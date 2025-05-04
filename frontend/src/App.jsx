@@ -4,6 +4,7 @@ import RecruiterDashboard from './RecruiterDashboard';
 import CandidateDashboard from './CandidateDashboard';
 import CompleteProfile from './CompleteProfile';
 import AssessmentChatbot from './AssessmentChatbot';
+import CandidateRanking from './CandidateRanking';
 
 const App = () => {
   return (
@@ -11,6 +12,7 @@ const App = () => {
       <Routes>
         {/* Recruiter Routes */}
         <Route path="/recruiter/dashboard" element={<RecruiterDashboard />} />
+        <Route path="/recruiter/candidates/:jobId" element={<CandidateRanking />} />
 
         {/* Candidate Routes */}
         <Route path="/candidate/dashboard" element={<CandidateDashboard />} />
