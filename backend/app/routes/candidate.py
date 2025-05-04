@@ -4,10 +4,209 @@ from app import db
 from app.models.candidate import Candidate
 from app.models.job import JobDescription
 from app.models.assessment_attempt import AssessmentAttempt
+from app.models.skill import Skill
+from app.models.candidate_skills import CandidateSkill
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
+import google.generativeai as genai
+import logging
+from io import BytesIO
+from pdfminer.high_level import extract_text
+import json
 
 candidate_api_bp = Blueprint('candidate_api', __name__, url_prefix='/api/candidate')
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Configure Gemini API
+genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
+
+def is_valid_pdf(file):
+    """Check if the file is a valid PDF by verifying its magic number."""
+    try:
+        # Read the first 5 bytes of the file
+        file.seek(0)
+        magic = file.read(5)
+        file.seek(0)  # Reset the pointer
+        return magic == b'%PDF-'
+    except Exception as e:
+        logger.error(f"Error checking PDF magic number: {e}")
+        return False
+
+def extract_text_from_pdf(pdf_file):
+    try:
+        # Check if the input is a FileStorage object (from Flask request.files)
+        if hasattr(pdf_file, 'read'):
+            # Validate that the file is a PDF
+            if not is_valid_pdf(pdf_file):
+                raise ValueError("The uploaded file is not a valid PDF.")
+            # Read the file content into a BytesIO object
+            pdf_content = pdf_file.read()
+            pdf_file.seek(0)  # Reset the file pointer to the beginning
+            pdf_stream = BytesIO(pdf_content)
+            text = extract_text(pdf_stream)
+        else:
+            raise ValueError("pdf_file must be a file-like object with a read method.")
+        return text
+    except Exception as e:
+        logger.error(f"Error extracting text from PDF: {e}")
+        return None
+
+def analyze_resume(resume_text):
+    try:
+        model = genai.GenerativeModel('gemini-1.5-pro-latest')
+        prompt = f"""
+You are a JSON assistant. Extract and return ONLY valid JSON in the following format (no comments or explanations):
+
+{{
+  "Skills": {{
+    "Technical Skills": [],
+    "Soft Skills": [],
+    "Tools": []
+  }},
+  "Work Experience": [
+    {{
+      "Company": "",
+      "Title": "",
+      "Start Date": "",
+      "End Date": "",
+      "Description": "",
+      "Technologies": ""
+    }}
+  ],
+  "Projects": [
+    {{
+      "Title": "",
+      "Description": "",
+      "Technologies": ""
+    }}
+  ],
+  "Education": [
+    {{
+      "Degree": "",
+      "Institution": "",
+      "Graduation Year": 0,
+      "Certification": false
+    }}
+  ]
+}}
+
+Extract skills and related information from the resume as follows:
+- Under "Skills", categorize into "Technical Skills", "Soft Skills", and "Tools".
+- Under "Work Experience", include each work experience with a brief "Description" and "Technologies".
+- Under "Projects", list each project with its "Title", "Description", and "Technologies".
+- Infer technologies for both "Work Experience" and "Projects":
+  - If "Jupyter Notebook", "Google Collab", "Flask", or "Jupyter" is mentioned, include "Python" in Technologies.
+  - If React is mentioned, include "JavaScript" in Technologies.
+  - If terms like "deep learning", "reinforcement learning", "AIML", or "AI" are mentioned, include "Artificial Intelligence" and "Machine Learning" in Technologies.
+  - If terms like "data structures", "algorithms", or "programming" are mentioned, include the relevant programming language (e.g., "Python", "Java") if specified.
+- Include skills like "Excel Pivoting" and "GitHub" in "Technical Skills" if mentioned, even if they might also be considered tools.
+
+Resume:
+{resume_text}
+        """
+        response = model.generate_content(prompt)
+        logger.debug(f"Raw Gemini API output: {response.text}")
+        return response.text
+    except Exception as e:
+        logger.error(f"Error during Gemini API call: {e}")
+        return None
+
+def refine_json_output(json_string):
+    try:
+        cleaned = json_string.strip().removeprefix("```json").removesuffix("```").strip()
+        result = json.loads(cleaned)
+        return result
+    except Exception as e:
+        logger.error(f"Error parsing JSON: {e}")
+        return None
+
+def infer_proficiency(skill, work_experience, education, projects):
+    score = 0
+    skill_lower = skill.lower()
+    strong_keywords = ["developed", "built", "implemented", "designed", "used", "created", "led", "integrated", "deployed"]
+    
+    related_terms = {
+        "artificial intelligence": ["ai", "aiml", "reinforcement learning", "deep learning"],
+        "machine learning": ["ml", "aiml", "deep learning", "reinforcement learning"],
+        "python": ["jupyter notebook", "google collab", "flask", "jupyter"],
+        "javascript": ["react", "ajax"]
+    }
+    
+    logger.debug(f"Evaluating proficiency for skill: {skill}")
+
+    # Check work experience
+    for exp in work_experience:
+        combined = (str(exp.get("Title", "")) + " " + str(exp.get("Description", "")) + " " + str(exp.get("Technologies", ""))).lower()
+        skill_found = False
+        if skill_lower in combined:
+            score += 2
+            skill_found = True
+            logger.debug(f"Skill '{skill}' found in work experience: +2 (Score: {score})")
+        for related_term in related_terms.get(skill_lower, []):
+            if related_term in combined:
+                score += 2
+                skill_found = True
+                logger.debug(f"Related term '{related_term}' for skill '{skill}' found in work experience: +2 (Score: {score})")
+                break
+        if skill_found and any(kw in combined for kw in strong_keywords):
+            score += 2
+            logger.debug(f"Strong keyword found for '{skill}' in work experience: +2 (Score: {score})")
+        if combined.count(skill_lower) >= 2:
+            score += 1
+            logger.debug(f"Multiple mentions of '{skill}' in work experience: +1 (Score: {score})")
+
+    # Check projects
+    for proj in projects:
+        proj_text = (str(proj.get("Title", "")) + " " + str(proj.get("Description", "")) + " " + str(proj.get("Technologies", ""))).lower()
+        skill_found = False
+        if skill_lower in proj_text:
+            score += 2
+            skill_found = True
+            logger.debug(f"Skill '{skill}' found in projects: +2 (Score: {score})")
+        for related_term in related_terms.get(skill_lower, []):
+            if related_term in proj_text:
+                score += 2
+                skill_found = True
+                logger.debug(f"Related term '{related_term}' for skill '{skill}' found in projects: +2 (Score: {score})")
+                break
+        if skill_found and any(kw in proj_text for kw in strong_keywords):
+            score += 2
+            logger.debug(f"Strong keyword found in project for '{skill}': +2 (Score: {score})")
+        if proj_text.count(skill_lower) >= 2:
+            score += 1
+            logger.debug(f"Multiple mentions of '{skill}' in projects: +1 (Score: {score})")
+
+    # Check education
+    for edu in education:
+        edu_text = (str(edu.get("Degree", "")) + " " + str(edu.get("Institution", ""))).lower()
+        skill_found = False
+        if skill_lower in edu_text:
+            score += 1
+            skill_found = True
+            logger.debug(f"Skill '{skill}' found in education: +1 (Score: {score})")
+        for related_term in related_terms.get(skill_lower, []):
+            if related_term in edu_text:
+                score += 1
+                skill_found = True
+                logger.debug(f"Related term '{related_term}' for skill '{skill}' found in education: +1 (Score: {score})")
+                break
+        if skill_found and "certification" in edu_text:
+            score += 2
+            logger.debug(f"Certification mention for '{skill}' in education: +2 (Score: {score})")
+
+    if score >= 5:
+        proficiency = 8  # Advanced
+        logger.debug(f"Final proficiency for '{skill}': Advanced (8) with score {score}")
+    elif score >= 2:
+        proficiency = 6  # Intermediate
+        logger.debug(f"Final proficiency for '{skill}': Intermediate (6) with score {score}")
+    else:
+        proficiency = 4  # Beginner
+        logger.debug(f"Final proficiency for '{skill}': Beginner (4) with score {score}")
+    return proficiency
 
 @candidate_api_bp.route('/profile/<int:candidate_id>', methods=['GET'])
 def get_profile(candidate_id):
@@ -50,6 +249,64 @@ def update_profile(candidate_id):
             resume_path = os.path.join('app/static/uploads', resume_filename)
             resume_file.save(resume_path)
             candidate.resume = resume_filename
+
+            # Parse resume and extract skills
+            resume_text = extract_text_from_pdf(resume_file)
+            if not resume_text:
+                return jsonify({'error': 'Failed to extract text from the resume. Please ensure the file is a valid, non-corrupted PDF.'}), 400
+
+            gemini_output = analyze_resume(resume_text)
+            if not gemini_output:
+                return jsonify({'error': 'Failed to parse resume with Gemini API.'}), 400
+
+            parsed_data = refine_json_output(gemini_output)
+            if not parsed_data:
+                return jsonify({'error': 'Failed to parse Gemini API output.'}), 400
+
+            # Extract skills and calculate proficiency
+            skills_data = parsed_data.get("Skills", {})
+            work_experience = parsed_data.get("Work Experience", [])
+            projects = parsed_data.get("Projects", [])
+            education = parsed_data.get("Education", [])
+
+            all_skills = (
+                skills_data.get("Technical Skills", []) +
+                skills_data.get("Soft Skills", []) +
+                skills_data.get("Tools", [])
+            )
+
+            for skill_name in all_skills:
+                skill_name = skill_name.strip()
+                if not skill_name:
+                    continue
+
+                # Check if skill exists, otherwise create it
+                skill = Skill.query.filter_by(name=skill_name).first()
+                if not skill:
+                    skill = Skill(name=skill_name, category='technical')  # Default to technical category
+                    db.session.add(skill)
+                    db.session.flush()
+
+                # Calculate proficiency
+                proficiency = infer_proficiency(skill_name, work_experience, education, projects)
+
+                # Check if the candidate already has this skill
+                existing_skill = CandidateSkill.query.filter_by(
+                    candidate_id=candidate_id,
+                    skill_id=skill.skill_id
+                ).first()
+
+                if existing_skill:
+                    # Update proficiency if the skill already exists
+                    existing_skill.proficiency = proficiency
+                else:
+                    # Add new skill entry
+                    candidate_skill = CandidateSkill(
+                        candidate_id=candidate_id,
+                        skill_id=skill.skill_id,
+                        proficiency=proficiency
+                    )
+                    db.session.add(candidate_skill)
         
         if profile_pic_file:
             profile_pic_filename = f"profile_pics/{candidate_id}_{profile_pic_file.filename}"
