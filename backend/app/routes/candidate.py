@@ -14,6 +14,8 @@ from io import BytesIO
 from pdfminer.high_level import extract_text
 import json
 
+from app.models.assessment_registration import AssessmentRegistration
+
 candidate_api_bp = Blueprint('candidate_api', __name__, url_prefix='/api/candidate')
 
 # Configure logging
@@ -334,17 +336,22 @@ def update_profile(user_id):
 
 @candidate_api_bp.route('/eligible-assessments/<int:user_id>', methods=['GET'])
 def get_eligible_assessments(user_id):
+    # Fetch candidate by user_id
     candidate = Candidate.query.filter_by(user_id=user_id).first_or_404()
 
+    # Return empty list if profile is incomplete
     if not candidate.is_profile_complete:
         return jsonify([]), 200
 
+    # Fetch all job descriptions (assessments)
     assessments = JobDescription.query.all()
     eligible_assessments = []
 
     for assessment in assessments:
         # Check years of experience
-        experience_match = (assessment.experience_min <= candidate.years_of_experience <= assessment.experience_max)
+        experience_match = (
+            assessment.experience_min <= candidate.years_of_experience <= assessment.experience_max
+        )
 
         # Check degree (case-insensitive match, allowing for None in degree_required)
         degree_match = False
@@ -354,6 +361,12 @@ def get_eligible_assessments(user_id):
             degree_match = True  # No degree required, so candidate is eligible
 
         if experience_match and degree_match:
+            # Check if candidate is registered for this assessment
+            is_registered = AssessmentRegistration.query.filter_by(
+                candidate_id=candidate.candidate_id,
+                job_id=assessment.job_id
+            ).first() is not None
+
             eligible_assessments.append({
                 'job_id': assessment.job_id,
                 'job_title': assessment.job_title,
@@ -364,16 +377,62 @@ def get_eligible_assessments(user_id):
                 'schedule': assessment.schedule.isoformat() if assessment.schedule else None,
                 'duration': assessment.duration,
                 'num_questions': assessment.num_questions,
-                'description': assessment.description if hasattr(assessment, 'description') else None
+                'description': assessment.description if hasattr(assessment, 'description') else None,
+                'is_registered': is_registered
             })
 
     return jsonify(eligible_assessments), 200
 
-@candidate_api_bp.route('/start-assessment', methods=['POST'])
-def start_assessment():
+@candidate_api_bp.route('/register-assessment', methods=['POST'])
+def register_assessment():
     data = request.get_json()
     candidate_id = data.get('candidate_id')
     job_id = data.get('job_id')
+
+    if not candidate_id or not job_id:
+        return jsonify({'error': 'Missing candidate_id or job_id'}), 400
+
+    # Check if candidate exists
+    candidate = Candidate.query.filter_by(user_id = candidate_id).first_or_404()
+
+    # Check if job exists
+    job = JobDescription.query.get_or_404(job_id)
+
+    # Check if already registered
+    existing_registration = AssessmentRegistration.query.filter_by(
+        candidate_id=candidate.candidate_id,
+        job_id=job_id
+    ).first()
+    if existing_registration:
+        return jsonify({'error': 'Already registered for this assessment'}), 400
+
+    # Create new registration
+    registration = AssessmentRegistration(
+        candidate_id=candidate.candidate_id,
+        job_id=job_id,
+        registration_date=datetime.utcnow()
+    )
+    db.session.add(registration)
+    try:
+        db.session.commit()
+    except IntegrityError as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to register: Invalid candidate_id or job_id ({str(e)})'}), 400
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Failed to register: {str(e)}'}), 500
+
+    return jsonify({'message': 'Successfully registered for the assessment'}), 200
+
+
+@candidate_api_bp.route('/start-assessment', methods=['POST'])
+def start_assessment():
+    data = request.get_json()
+    user_id = data.get('user_id')
+    job_id = data.get('job_id')
+
+    candidate = Candidate.query.filter_by(user_id=user_id).first_or_404()
+    candidate_id = candidate.candidate_id
 
     if not candidate_id or not job_id:
         return jsonify({'error': 'Missing candidate_id or job_id'}), 400

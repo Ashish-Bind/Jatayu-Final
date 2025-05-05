@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Navbar from './components/Navbar'
-import { Briefcase, ChevronRight, X, Check } from 'lucide-react'
+import { Briefcase, ChevronRight, X, Check, Plus, Trash2 } from 'lucide-react'
 
 const RecruiterDashboard = () => {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [assessments, setAssessments] = useState([])
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -20,32 +21,78 @@ const RecruiterDashboard = () => {
     schedule: '',
     degree_required: '',
     description: '',
+    skills: [],
   })
+  const [newSkill, setNewSkill] = useState({ name: '', priority: 'low' })
 
   useEffect(() => {
-    if (!user || user.role !== 'recruiter') return
+    if (!user || user.role !== 'recruiter') {
+      navigate('/recruiter/login')
+      return
+    }
 
-    fetch(`http://localhost:5000/api/recruiter/assessments/${user.id}`, {
+    fetch('http://localhost:5000/api/recruiter/assessments', {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
     })
-      .then((response) => response.json())
-      .then((data) => setAssessments(data))
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Failed to fetch assessments: ${response.statusText}`)
+        }
+        return response.json()
+      })
+      .then((data) => {
+        setAssessments([...data.active_assessments, ...data.past_assessments])
+      })
       .catch((error) => {
         console.error('Error fetching assessments:', error)
-        setError('Failed to load assessments.')
+        setError(`Failed to load assessments: ${error.message}`)
       })
-  }, [user])
+  }, [user, navigate])
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
     setFormData({ ...formData, [name]: value })
   }
 
+  const handleSkillChange = (e) => {
+    const { name, value } = e.target
+    setNewSkill({ ...newSkill, [name]: value })
+  }
+
+  const addSkill = () => {
+    if (!newSkill.name.trim()) {
+      setError('Skill name is required')
+      return
+    }
+    setFormData({
+      ...formData,
+      skills: [
+        ...formData.skills,
+        { name: newSkill.name.trim(), priority: newSkill.priority },
+      ],
+    })
+    setNewSkill({ name: '', priority: 'low' })
+    setError('')
+  }
+
+  const removeSkill = (index) => {
+    setFormData({
+      ...formData,
+      skills: formData.skills.filter((_, i) => i !== index),
+    })
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setSuccess('')
+
+    // Validate skills
+    if (formData.skills.length === 0) {
+      setError('At least one skill is required')
+      return
+    }
 
     try {
       const response = await fetch(
@@ -54,7 +101,7 @@ const RecruiterDashboard = () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ ...formData, recruiter_id: user.id }),
+          body: JSON.stringify(formData),
         }
       )
 
@@ -72,31 +119,30 @@ const RecruiterDashboard = () => {
           schedule: '',
           degree_required: '',
           description: '',
+          skills: [],
         })
+        setNewSkill({ name: '', priority: 'low' })
         setIsFormOpen(false)
       } else {
         setError(data.error || 'Failed to create assessment.')
       }
     } catch (err) {
-      setError('An error occurred. Please try again.')
+      setError(`Network error: ${err.message}. Is the backend running?`)
     }
   }
 
-  // Segregate assessments
-  const currentDate = new Date('2025-05-04T00:00:00Z')
-  const activeAssessments = assessments?.filter(
-    (assessment) => new Date(assessment.schedule) > currentDate
+  const currentDate = new Date()
+  const activeAssessments = assessments.filter(
+    (assessment) => new Date(assessment.schedule) >= currentDate
   )
-  const pastAssessments = assessments?.filter(
-    (assessment) => new Date(assessment.schedule) <= currentDate
+  const pastAssessments = assessments.filter(
+    (assessment) => new Date(assessment.schedule) < currentDate
   )
-
-  console.log(activeAssessments, pastAssessments)
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
       <Navbar />
-      <div className="min-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-6">
           Recruiter Dashboard
         </h1>
@@ -210,7 +256,7 @@ const RecruiterDashboard = () => {
                     value={formData.experience_max}
                     onChange={handleInputChange}
                     className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-indigo-600 focus:border-indigo-600 text-sm placeholder-gray-400"
-                    min="0"
+                    min={formData.experience_min || 0}
                     step="0.1"
                     placeholder="5"
                     required
@@ -265,8 +311,13 @@ const RecruiterDashboard = () => {
                     type="datetime-local"
                     name="schedule"
                     id="schedule"
-                    value={formData.schedule}
-                    onChange={handleInputChange}
+                    value={
+                      formData.schedule ? formData.schedule.slice(0, 16) : ''
+                    }
+                    onChange={(e) => {
+                      const date = new Date(e.target.value)
+                      setFormData({ ...formData, schedule: date.toISOString() })
+                    }}
                     className="w-full px-3 py-2 border border-gray-200 rounded-md focus:ring-indigo-600 focus:border-indigo-600 text-sm"
                     required
                   />
@@ -289,6 +340,7 @@ const RecruiterDashboard = () => {
                   />
                 </div>
                 <div className="sm:col-span-2">
+                  268{' '}
                   <label
                     htmlFor="description"
                     className="block text-sm font-medium text-gray-700 mb-1"
@@ -304,6 +356,60 @@ const RecruiterDashboard = () => {
                     rows="4"
                     placeholder="Describe the job role and requirements..."
                   />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Skills
+                  </label>
+                  <div className="flex gap-4 mb-2">
+                    <input
+                      type="text"
+                      name="name"
+                      value={newSkill.name}
+                      onChange={handleSkillChange}
+                      className="flex-1 px-3 py-2 border border-gray-200 rounded-md focus:ring-indigo-600 focus:border-indigo-600 text-sm placeholder-gray-400"
+                      placeholder="e.g., Python"
+                    />
+                    <select
+                      name="priority"
+                      value={newSkill.priority}
+                      onChange={handleSkillChange}
+                      className="px-3 py-2 border border-gray-200 rounded-md focus:ring-indigo-600 focus:border-indigo-600 text-sm"
+                    >
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={addSkill}
+                      className="px-4 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 flex items-center gap-2"
+                    >
+                      Add
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                  {formData.skills.length > 0 && (
+                    <ul className="space-y-2">
+                      {formData.skills.map((skill, index) => (
+                        <li
+                          key={index}
+                          className="flex items-center justify-between bg-gray-50 p-2 rounded-md"
+                        >
+                          <span className="text-sm text-gray-700">
+                            {skill.name} ({skill.priority})
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeSkill(index)}
+                            className="text-red-500 hover:text-red-700 focus:outline-none"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
               <div className="flex justify-end mt-4">
@@ -351,6 +457,14 @@ const RecruiterDashboard = () => {
                   <p>
                     Schedule: {new Date(assessment.schedule).toLocaleString()}
                   </p>
+                  {assessment.skills && assessment.skills.length > 0 && (
+                    <p>
+                      Skills:{' '}
+                      {assessment.skills
+                        .map((s) => `${s.name} (${s.priority})`)
+                        .join(', ')}
+                    </p>
+                  )}
                 </div>
                 <Link
                   to={`/recruiter/candidates/${assessment.job_id}`}
@@ -400,14 +514,38 @@ const RecruiterDashboard = () => {
                   <p>
                     Schedule: {new Date(assessment.schedule).toLocaleString()}
                   </p>
+                  {assessment.skills && assessment.skills.length > 0 && (
+                    <p>
+                      Skills:{' '}
+                      {assessment.skills
+                        .map((s) => `${s.name} (${s.priority})`)
+                        .join(', ')}
+                    </p>
+                  )}
                 </div>
-                <Link
-                  to={`/recruiter/candidates/${assessment.job_id}`}
-                  className="inline-flex items-center text-indigo-600 hover:text-indigo-800 font-medium text-sm"
-                >
-                  View Candidates
-                  <ChevronRight className="w-4 h-4 ml-1" />
-                </Link>
+                <div className="flex flex-wrap gap-4">
+                  <Link
+                    to={`/recruiter/candidates/${assessment.job_id}`}
+                    className="inline-flex items-center text-indigo-600 hover:text-indigo-800 font-medium text-sm"
+                  >
+                    View Candidates
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </Link>
+                  <Link
+                    to={`/recruiter/report/${assessment.job_id}`}
+                    className="inline-flex items-center text-green-600 hover:text-green-800 font-medium text-sm"
+                  >
+                    View Report
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </Link>
+                  <Link
+                    to={`/recruiter/combined-report/${assessment.job_id}`}
+                    className="inline-flex items-center text-purple-600 hover:text-purple-800 font-medium text-sm"
+                  >
+                    View Combined Report
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </Link>
+                </div>
               </div>
             ))}
           </div>

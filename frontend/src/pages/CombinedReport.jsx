@@ -11,38 +11,27 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js'
-import { ChevronRight, X, Briefcase } from 'lucide-react'
-import Navbar from './components/Navbar'
+import { Briefcase, X, ChevronRight } from 'lucide-react'
+import Navbar from '../components/Navbar'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
-const CandidateRankings = () => {
+const CombinedReport = () => {
   const { job_id } = useParams()
-  const [data, setData] = useState(null)
+  const [report, setReport] = useState(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    fetch(`http://localhost:5000/api/recruiter/candidates/${job_id}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'include',
-    })
-      .then((response) => {
-        if (!response.ok) {
-          return response.json().then((err) => {
-            throw new Error(err.error || 'Failed to fetch candidates')
-          })
-        }
-        return response.json()
+    axios
+      .get(`http://localhost:5000/api/recruiter/combined-report/${job_id}`, {
+        withCredentials: true, // Ensure cookies are sent
       })
-      .then((data) => {
-        setData(data)
+      .then((response) => {
+        setReport(response.data)
       })
       .catch((error) => {
-        console.error('Error fetching candidates:', error)
-        setError(error.message)
+        console.error('Error fetching report:', error)
+        setError(error.response?.data?.error || 'Failed to fetch report')
       })
   }, [job_id])
 
@@ -69,7 +58,7 @@ const CandidateRankings = () => {
     )
   }
 
-  if (!data)
+  if (!report)
     return (
       <div className="min-h-screen bg-gray-100 flex flex-col">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center text-gray-700 text-sm">
@@ -78,27 +67,27 @@ const CandidateRankings = () => {
       </div>
     )
 
-  // Chart data for Total Score
+  // Chart data for Scores
   const chartData = {
-    labels: data.candidates.map((candidate) => candidate.name),
+    labels: report.candidates.map((candidate) => candidate.name),
     datasets: [
       {
-        label: 'Total Score',
-        data: data.candidates.map((candidate) => candidate.total_score),
+        label: 'Pre-Assessment Score',
+        data: report.candidates.map((candidate) => candidate.pre_score),
         backgroundColor: 'rgba(79, 70, 229, 0.6)', // indigo-600
         borderColor: 'rgba(79, 70, 229, 1)',
         borderWidth: 1,
       },
       {
-        label: 'Skill Score',
-        data: data.candidates.map((candidate) => candidate.skill_score),
+        label: 'Post-Assessment Score',
+        data: report.candidates.map((candidate) => candidate.post_score),
         backgroundColor: 'rgba(16, 185, 129, 0.6)', // green-500
         borderColor: 'rgba(16, 185, 129, 1)',
         borderWidth: 1,
       },
       {
-        label: 'Experience Score',
-        data: data.candidates.map((candidate) => candidate.experience_score),
+        label: 'Combined Score',
+        data: report.candidates.map((candidate) => candidate.combined_score),
         backgroundColor: 'rgba(139, 92, 246, 0.6)', // purple-500
         borderColor: 'rgba(139, 92, 246, 1)',
         borderWidth: 1,
@@ -111,10 +100,16 @@ const CandidateRankings = () => {
     plugins: {
       legend: {
         position: 'top',
+        labels: {
+          font: {
+            size: 12,
+          },
+          color: '#374151', // gray-700
+        },
       },
       title: {
         display: true,
-        text: `Candidate Scores for ${data.job_title}`,
+        text: `Combined Scores for ${report.job_title}`,
         font: {
           size: 18,
           weight: '600',
@@ -152,7 +147,7 @@ const CandidateRankings = () => {
       <Navbar />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-6">
-          Candidate Rankings for {data.job_title}
+          Combined Report for {report.job_title}
         </h1>
         <Link
           to="/recruiter/dashboard"
@@ -162,7 +157,7 @@ const CandidateRankings = () => {
           <ChevronRight className="w-4 h-4 ml-1" />
         </Link>
 
-        {data.candidates.length > 0 ? (
+        {report.candidates.length > 0 ? (
           <>
             {/* Chart Section */}
             <div className="bg-white p-6 sm:p-8 rounded-lg shadow-sm border border-gray-200 mb-8">
@@ -184,18 +179,30 @@ const CandidateRankings = () => {
                       Email
                     </th>
                     <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 border-b border-gray-200">
-                      Total Score
+                      Status
                     </th>
                     <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 border-b border-gray-200">
-                      Skill Score
+                      Pre-Score
                     </th>
                     <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 border-b border-gray-200">
-                      Experience Score
+                      Post-Score
+                    </th>
+                    <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 border-b border-gray-200">
+                      Combined Score
+                    </th>
+                    <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 border-b border-gray-200">
+                      Questions Attempted
+                    </th>
+                    <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 border-b border-gray-200">
+                      Avg Time/Question (s)
+                    </th>
+                    <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 border-b border-gray-200">
+                      Final Bands
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.candidates.map((candidate) => (
+                  {report.candidates.map((candidate) => (
                     <tr
                       key={candidate.candidate_id}
                       className="hover:bg-gray-50"
@@ -210,13 +217,31 @@ const CandidateRankings = () => {
                         {candidate.email}
                       </td>
                       <td className="py-3 px-6 text-sm text-gray-700 border-b border-gray-200">
-                        {candidate.total_score}
+                        {candidate.status}
                       </td>
                       <td className="py-3 px-6 text-sm text-gray-700 border-b border-gray-200">
-                        {candidate.skill_score}
+                        {candidate.pre_score}
                       </td>
                       <td className="py-3 px-6 text-sm text-gray-700 border-b border-gray-200">
-                        {candidate.experience_score}
+                        {candidate.post_score}
+                      </td>
+                      <td className="py-3 px-6 text-sm text-gray-700 border-b border-gray-200">
+                        {candidate.combined_score}
+                      </td>
+                      <td className="py-3 px-6 text-sm text-gray-700 border-b border-gray-200">
+                        {candidate.total_questions}
+                      </td>
+                      <td className="py-3 px-6 text-sm text-gray-700 border-b border-gray-200">
+                        {candidate.avg_time_per_question}
+                      </td>
+                      <td className="py-3 px-6 text-sm text-gray-700 border-b border-gray-200">
+                        {Object.entries(candidate.final_bands).map(
+                          ([skill, band]) => (
+                            <span key={skill} className="mr-2">
+                              {skill}: {band}
+                            </span>
+                          )
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -226,7 +251,7 @@ const CandidateRankings = () => {
 
             {/* Card Section */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {data.candidates.map((candidate) => (
+              {report.candidates.map((candidate) => (
                 <div
                   key={candidate.candidate_id}
                   className="bg-white p-5 rounded-lg shadow-sm hover:shadow-md transition-shadow border border-gray-200"
@@ -245,9 +270,22 @@ const CandidateRankings = () => {
                     </div>
                   </div>
                   <div className="space-y-2 text-sm text-gray-700">
-                    <p>Total Score: {candidate.total_score}</p>
-                    <p>Skill Score: {candidate.skill_score}</p>
-                    <p>Experience Score: {candidate.experience_score}</p>
+                    <p>Status: {candidate.status}</p>
+                    <p>Pre-Assessment Score: {candidate.pre_score}</p>
+                    <p>Post-Assessment Score: {candidate.post_score}</p>
+                    <p>Combined Score: {candidate.combined_score}</p>
+                    <p>Questions Attempted: {candidate.total_questions}</p>
+                    <p>Avg Time/Question: {candidate.avg_time_per_question}s</p>
+                    <p>
+                      Final Bands:{' '}
+                      {Object.entries(candidate.final_bands).map(
+                        ([skill, band]) => (
+                          <span key={skill} className="mr-2">
+                            {skill}: {band}
+                          </span>
+                        )
+                      )}
+                    </p>
                     {candidate.description && <p>{candidate.description}</p>}
                   </div>
                 </div>
@@ -256,7 +294,7 @@ const CandidateRankings = () => {
           </>
         ) : (
           <div className="bg-white p-6 rounded-lg shadow-sm text-center border border-gray-200">
-            <p className="text-sm text-gray-700">No candidates registered.</p>
+            <p className="text-sm text-gray-700">No candidates found.</p>
           </div>
         )}
       </div>
@@ -264,4 +302,4 @@ const CandidateRankings = () => {
   )
 }
 
-export default CandidateRankings
+export default CombinedReport

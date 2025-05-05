@@ -1,5 +1,5 @@
 import React from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { Zap, Briefcase, User, User2Icon } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
@@ -7,6 +7,9 @@ import { useNavigate } from 'react-router-dom'
 const Navbar = ({ userType }) => {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const url = location.pathname
+
+  console.log(url)
 
   const handleLogout = async () => {
     await logout()
@@ -18,39 +21,35 @@ const Navbar = ({ userType }) => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           <div className="flex items-center">
-            <div className="flex-shrink-0 flex items-center">
+            <Link to="/" className="flex-shrink-0 flex items-center">
               <Zap className="h-6 w-6 text-indigo-600" />
               <h1 className="text-xl font-bold text-indigo-600 ml-2">
-                AI Quiz
+                Quizzer
               </h1>
-            </div>
+            </Link>
             <div className="hidden md:block ml-10">
-              <div className="flex space-x-8">
-                <Link
-                  to="/"
-                  className="text-gray-700 hover:text-indigo-600 px-3 py-2 text-sm font-medium"
-                >
-                  Home
-                </Link>
-                <Link
-                  to="/#features"
-                  className="text-gray-700 hover:text-indigo-600 px-3 py-2 text-sm font-medium"
-                >
-                  Features
-                </Link>
-                <Link
-                  to="/#how-it-works"
-                  className="text-gray-700 hover:text-indigo-600 px-3 py-2 text-sm font-medium"
-                >
-                  How It Works
-                </Link>
-                <Link
-                  to="/#testimonials"
-                  className="text-gray-700 hover:text-indigo-600 px-3 py-2 text-sm font-medium"
-                >
-                  Testimonials
-                </Link>
-              </div>
+              {url === '/' && (
+                <div className="flex space-x-8">
+                  <Link
+                    to="/#features"
+                    className="text-gray-700 hover:text-indigo-600 px-3 py-2 text-sm font-medium"
+                  >
+                    Features
+                  </Link>
+                  <Link
+                    to="/#how-it-works"
+                    className="text-gray-700 hover:text-indigo-600 px-3 py-2 text-sm font-medium"
+                  >
+                    How It Works
+                  </Link>
+                  <Link
+                    to="/#testimonials"
+                    className="text-gray-700 hover:text-indigo-600 px-3 py-2 text-sm font-medium"
+                  >
+                    Testimonials
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
           <div className="hidden md:block">
@@ -89,7 +88,7 @@ const Navbar = ({ userType }) => {
                     to="/recruiter/dashboard"
                     className="text-gray-700 hover:text-indigo-600 px-3 py-2 text-sm font-medium flex items-center"
                   >
-                    <Briefcase className="h-4 w-4 mr-1" /> Dashboard
+                    Dashboard
                   </Link>
                   <button
                     className="px-3 py-2 text-sm font-medium text-gray-700 hover:text-indigo-600"

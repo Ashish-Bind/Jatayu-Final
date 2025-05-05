@@ -13,6 +13,8 @@ import CandidateDashboard from './CandidateDashboard'
 import CompleteProfile from './CompleteProfile'
 import AssessmentChatbot from './AssessmentChatbot'
 import CandidateRanking from './CandidateRanking'
+import PostAssessmentReport from './pages/PostAssessmentReport'
+import CombinedReport from './pages/CombinedReport'
 
 export default function App() {
   const { user } = useAuth()
@@ -56,8 +58,16 @@ export default function App() {
       >
         <Route path="/recruiter/dashboard" element={<RecruiterDashboard />} />
         <Route
-          path="/recruiter/candidates/:jobId"
+          path="/recruiter/candidates/:job_id"
           element={<CandidateRanking />}
+        />
+        <Route
+          path="/recruiter/report/:job_id"
+          element={<PostAssessmentReport />}
+        />
+        <Route
+          path="/recruiter/combined-report/:job_id"
+          element={<CombinedReport />}
         />
       </Route>
     </Routes>

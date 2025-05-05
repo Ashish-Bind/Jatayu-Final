@@ -14,35 +14,52 @@ import {
   Calendar,
   FileText,
   X,
+  Check,
 } from 'lucide-react'
-import Navbar from './components/Navbar' // Import the Navbar component
+import Navbar from './components/Navbar'
 
 // Bind modal to your appElement (for accessibility)
 Modal.setAppElement('#root')
 
 const CandidateDashboard = () => {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [candidate, setCandidate] = useState(null)
   const [assessments, setAssessments] = useState([])
   const [selectedAssessment, setSelectedAssessment] = useState(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
-  const navigate = useNavigate()
+  const [successMessage, setSuccessMessage] = useState('')
 
   useEffect(() => {
+    if (!user || user.role !== 'candidate') {
+      navigate('/candidate/login')
+      return
+    }
+
     // Fetch candidate data
     fetch(`http://localhost:5000/api/candidate/profile/${user.id}`, {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
     })
-      .then((response) => response.json())
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch profile: ${response.status} ${response.statusText}`
+          )
+        }
+        return response.json()
+      })
       .then((data) => {
         setCandidate(data)
         if (!data.is_profile_complete) {
           navigate('/candidate/complete-profile')
         }
       })
-      .catch((error) => console.error('Error fetching candidate:', error))
+      .catch((error) => {
+        console.error('Error fetching candidate:', error)
+        setErrorMessage(`Failed to load candidate profile: ${error.message}`)
+      })
 
     // Fetch eligible assessments
     fetch(
@@ -52,10 +69,78 @@ const CandidateDashboard = () => {
         credentials: 'include',
       }
     )
-      .then((response) => response.json())
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch assessments: ${response.status} ${response.statusText}`
+          )
+        }
+        return response.json()
+      })
       .then((data) => setAssessments(data))
-      .catch((error) => console.error('Error fetching assessments:', error))
-  }, [navigate, user.id])
+      .catch((error) => {
+        console.error('Error fetching assessments:', error)
+        setErrorMessage(`Failed to load assessments: ${error.message}`)
+      })
+  }, [navigate, user])
+
+  const handleRegisterAssessment = (assessment) => {
+    setErrorMessage('')
+    setSuccessMessage('')
+    fetch('http://localhost:5000/api/candidate/register-assessment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        candidate_id: user.id,
+        job_id: assessment.job_id,
+      }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(
+            `Registration failed: ${response.status} ${response.statusText}`
+          )
+        }
+        return response.json()
+      })
+      .then((data) => {
+        if (data.message) {
+          setSuccessMessage(data.message)
+          // Refresh assessments to update is_registered
+          fetch(
+            `http://localhost:5000/api/candidate/eligible-assessments/${user.id}`,
+            {
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+            }
+          )
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(
+                  `Failed to refresh assessments: ${response.status} ${response.statusText}`
+                )
+              }
+              return response.json()
+            })
+            .then((data) => setAssessments(data))
+            .catch((error) => {
+              console.error('Error refreshing assessments:', error)
+              setErrorMessage(`Failed to refresh assessments: ${error.message}`)
+            })
+        } else {
+          setErrorMessage(
+            data.error || 'Failed to register for the assessment.'
+          )
+        }
+      })
+      .catch((error) => {
+        console.error('Error registering for assessment:', error)
+        setErrorMessage(
+          `Failed to register for the assessment: ${error.message}`
+        )
+      })
+  }
 
   const handleStartAssessment = (assessment) => {
     const scheduleTime = new Date(assessment.schedule)
@@ -71,58 +156,82 @@ const CandidateDashboard = () => {
 
     setSelectedAssessment(assessment)
     setErrorMessage('')
+    setSuccessMessage('')
     setIsModalOpen(true)
   }
 
   const confirmStartAssessment = () => {
     if (!selectedAssessment) return
 
-    // Start the assessment by creating an attempt
     fetch('http://localhost:5000/api/candidate/start-assessment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({
-        candidate_id: user.id,
+        user_id: user.id,
         job_id: selectedAssessment.job_id,
       }),
     })
-      .then((response) => response.json())
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(
+            `Failed to start assessment: ${response.status} ${response.statusText}`
+          )
+        }
+        return response.json()
+      })
       .then((data) => {
         if (data.attempt_id) {
-          // Redirect to the MCQ chatbot page with the attempt ID
           navigate(`/candidate/assessment/${data.attempt_id}`)
         } else {
-          setErrorMessage('Failed to start the assessment.')
+          setErrorMessage(data.error || 'Failed to start the assessment.')
         }
       })
       .catch((error) => {
         console.error('Error starting assessment:', error)
-        setErrorMessage('An error occurred while starting the assessment.')
+        setErrorMessage(`Failed to start the assessment: ${error.message}`)
       })
 
     setIsModalOpen(false)
   }
 
-  if (!candidate)
+  if (!candidate) {
     return (
       <div className="flex justify-center items-center h-screen bg-gray-100">
         <div className="text-gray-700 text-lg">Loading...</div>
       </div>
     )
+  }
 
   return (
     <div className="min-h-screen bg-gray-100">
-      <Navbar /> {/* Render the Navbar */}
+      <Navbar />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {errorMessage && (
-          <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded-md flex items-start gap-3">
+          <div
+            className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 mb-6 rounded-md flex items-start gap-3"
+            role="alert"
+          >
             <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
             <p>{errorMessage}</p>
           </div>
         )}
 
+        {successMessage && (
+          <div
+            className="bg-green-50 border-l-4 border-green-500 text-green-700 p-4 mb-6 rounded-md flex items-start gap-3"
+            role="alert"
+          >
+            <Check className="w-5 h-5 mt-0.5 flex-shrink-0" />
+            <p>{successMessage}</p>
+          </div>
+        )}
+
         {!candidate.is_profile_complete ? (
-          <div className="bg-yellow-50 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-6 rounded-md flex items-start gap-3">
+          <div
+            className="bg-yellow-50 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-6 rounded-md flex items-start gap-3"
+            role="alert"
+          >
             <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
             <div>
               <p>Please complete your profile to access assessments.</p>
@@ -160,13 +269,18 @@ const CandidateDashboard = () => {
                         </p>
                       </div>
                     </div>
-
                     <div className="space-y-2 mb-4 text-sm text-gray-700">
                       <div className="flex items-center gap-2">
                         <Award className="w-4 h-4 text-indigo-600" />
                         <span>
                           Experience: {assessment.experience_min}-
                           {assessment.experience_max} years
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-indigo-600" />
+                        <span>
+                          Degree: {assessment.degree_required || 'None'}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -187,13 +301,23 @@ const CandidateDashboard = () => {
                         </div>
                       )}
                     </div>
-
-                    <button
-                      onClick={() => handleStartAssessment(assessment)}
-                      className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm font-medium transition-colors"
-                    >
-                      Start Assessment <ArrowRight className="w-4 h-4" />
-                    </button>
+                    <div className="flex gap-2">
+                      {assessment.is_registered ? (
+                        <button
+                          onClick={() => handleStartAssessment(assessment)}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-sm font-medium transition-colors"
+                        >
+                          Start Assessment <ArrowRight className="w-4 h-4" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleRegisterAssessment(assessment)}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md text-sm font-medium transition-colors"
+                        >
+                          Register <ArrowRight className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -214,7 +338,6 @@ const CandidateDashboard = () => {
           </>
         )}
 
-        {/* Confirmation Modal */}
         <Modal
           isOpen={isModalOpen}
           onRequestClose={() => setIsModalOpen(false)}
@@ -301,8 +424,7 @@ const CandidateDashboard = () => {
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => setIsModalOpen(false)}
-                  className="px-3 py-1.5 rounded-md text-sm font-medium text-gray-700[TRUNCATED]
-                    text-gray-700 hover:bg-gray-100 border border-gray-200"
+                  className="px-3 py-1.5 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-100 border border-gray-200"
                 >
                   Cancel
                 </button>
