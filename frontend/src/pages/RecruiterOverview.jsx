@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { ThemeContext } from '../context/ThemeContext'
 import {
   Briefcase,
   User,
@@ -9,12 +8,14 @@ import {
   Calendar,
   LogOut,
   Verified,
+  CreditCard,
 } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import ClockLoader from '../components/ClockLoader'
 import { Link } from 'react-router-dom'
 import LinkButton from '../components/LinkButton'
 import Button from '../components/Button'
+import { baseUrl } from '../utils/utils'
 
 const RecruiterOverview = () => {
   const { user, logout } = useAuth()
@@ -38,13 +39,18 @@ const RecruiterOverview = () => {
       link: '/recruiter/analytics',
       icon: User,
     },
+    {
+      name: 'Subscriptions',
+      link: '/recruiter/subscriptions',
+      icon: CreditCard,
+    },
   ]
 
   useEffect(() => {
     if (!user || user.role !== 'recruiter') return
 
     // Fetch recruiter profile
-    fetch(`http://localhost:5000/api/recruiter/assessments/${user.id}`, {
+    fetch(`${baseUrl}/recruiter/assessments/${user.id}`, {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
     })
@@ -52,13 +58,13 @@ const RecruiterOverview = () => {
       .then((data) => {
         setRecruiter({
           company: data[0]?.company || 'Not specified',
-          company_image: data[0]?.company_image || null,
+          logo: data[0]?.logo || null,
         })
       })
       .catch((error) => setError(`Failed to load profile: ${error.message}`))
 
     // Fetch jobs
-    fetch('http://localhost:5000/api/recruiter/analytics/jobs', {
+    fetch(`${baseUrl}/recruiter/analytics/jobs`, {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
     })
@@ -71,8 +77,8 @@ const RecruiterOverview = () => {
       })
       .catch((error) => setError(`Failed to load jobs: ${error.message}`))
 
-    // Fetch candidates (example with no filter)
-    fetch('http://localhost:5000/api/recruiter/analytics/candidates', {
+    // Fetch candidates
+    fetch(`${baseUrl}/recruiter/analytics/candidates`, {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
     })
@@ -83,236 +89,389 @@ const RecruiterOverview = () => {
 
   if (error) {
     return (
-      <div className="flex justify-center items-center h-screen text-red-600">
-        {error}
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-red-50 to-pink-50 dark:from-gray-900 dark:to-red-900">
+        <div className="text-center p-8 bg-white/70 dark:bg-gray-800/70 rounded-2xl shadow-xl border border-red-200 dark:border-red-700 backdrop-blur-lg">
+          <div className="text-red-500 dark:text-red-400 text-6xl mb-4">⚠️</div>
+          <p className="text-red-600 dark:text-red-400 text-xl font-medium">
+            Error: {error}
+          </p>
+        </div>
       </div>
     )
   }
 
   if (!recruiter) {
-    return <ClockLoader />
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-gray-900 dark:to-slate-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-500 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-900 dark:text-gray-100 text-xl font-medium">
+            Loading dashboard...
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-gray-900 dark:via-slate-900 dark:to-indigo-950 flex flex-col font-sans">
       <Navbar />
-      <div
-        className={`min-h-screen transition-colors duration-300 bg-gray-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 flex`}
-      >
-        {/* Sidebar */}
-        <div className="w-64 p-6 space-y-6 bg-white dark:bg-gray-900 shadow-sm dark:border-r dark:border-gray-800">
+      <div className="flex flex-1">
+        {/* Left Sidebar */}
+        <div className="w-64 p-6 bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg shadow-sm border-r border-gray-200/50 dark:border-gray-700/50">
           <nav className="space-y-4">
             {links.map((item) => (
               <LinkButton
                 key={item.name}
                 to={item.link}
-                className="w-full flex items-center gap-2 text-left p-3 text-gray-800 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-base font-medium"
+                className="w-full flex items-center gap-3 p-3 text-gray-800 dark:text-gray-100 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 rounded-xl text-base font-medium transition-all duration-200"
               >
-                <item.icon className="text-indigo-600 dark:text-indigo-200" />
+                <item.icon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                 {item.name}
               </LinkButton>
             ))}
             <LinkButton
               onClick={logout}
-              className="w-full flex items-center gap-2 text-left p-3 text-gray-800 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-base font-medium"
+              className="w-full flex items-center gap-3 p-3 text-gray-800 dark:text-gray-100 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 rounded-xl text-base font-medium transition-all duration-200"
             >
-              <LogOut className="text-indigo-600 dark:text-indigo-200" />
+              <LogOut className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               Logout
             </LinkButton>
           </nav>
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 p-4">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6 rounded-xl mb-2 text-center shadow-md">
-            <h2 className="text-2xl font-semibold">
-              Manage Your Recruitment Process Efficiently
-            </h2>
-            <button className="mt-4 px-6 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition">
-              Explore More
-            </button>
-          </div>
-          <div
-            className={`bg-gradient-to-r from-green-600 to-teal-600 text-white p-6 rounded-xl mb-2 text-center shadow-md`}
-          >
-            <h2 className="text-2xl font-semibold">
-              Welcome to Your Recruiter Dashboard
-            </h2>
-          </div>
-
-          {/* Recruiter Info */}
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-2 border border-gray-200 dark:border-gray-700">
-            <h3 className="text-xl font-semibold mb-6 flex items-center gap-2 text-gray-900 dark:text-gray-100">
-              <Briefcase className="w-6 h-6 text-indigo-600" /> My Profile
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="flex flex-col gap-2">
-                <p className="text-base text-gray-700 dark:text-gray-300">
-                  <strong>Company:</strong> {recruiter.company}
-                </p>
-                <p className="text-base text-gray-700 dark:text-gray-300">
-                  <strong>Total Jobs:</strong>{' '}
-                  {jobs.active.length +
-                    jobs.suspended.length +
-                    jobs.deleted.length}
-                </p>
-                <p className="text-base text-gray-700 dark:text-gray-300">
-                  <strong>Active Jobs:</strong> {jobs.active.length}
-                </p>
-              </div>
-              <div className="flex flex-col gap-2">
-                <p className="text-base text-gray-700 dark:text-gray-300">
-                  <strong>Suspended Jobs:</strong> {jobs.suspended.length}
-                </p>
-                <p className="text-base text-gray-700 dark:text-gray-300">
-                  <strong>Deleted Jobs:</strong> {jobs.deleted.length}
-                </p>
-                <p className="text-base text-gray-700 dark:text-gray-300">
-                  <strong>Total Candidates:</strong> {candidates.length}
-                </p>
-                <LinkButton
-                  to="/recruiter/profile"
-                  variant="primary"
-                  className={'w-fit'}
-                >
-                  Edit Profile
-                </LinkButton>
-              </div>
-            </div>
-          </div>
-
-          {/* Active Jobs */}
-          <div className="mb-2">
-            <h3 className="text-xl font-semibold mb-4 flex items-center gap-2 text-gray-900 dark:text-gray-100">
-              <Briefcase className="w-6 h-6 text-indigo-600" /> Active Jobs
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {jobs.active.map((job) => (
-                <div
-                  key={job.job_id}
-                  className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition transform hover:-translate-y-1"
-                >
-                  {recruiter.company_image && (
-                    <img
-                      src={`http://localhost:5000/static/uploads/${recruiter.company_image}`}
-                      alt={'Company Logo'}
-                      className="w-full h-32 object-cover rounded-lg mb-4"
-                    />
-                  )}
-                  <h4 className="text-base font-medium text-gray-900 dark:text-gray-100">
-                    {job.job_title}
-                  </h4>
-                  <p className="text-base text-gray-600 dark:text-gray-400">
-                    Created:{' '}
-                    {new Date(job.created_at).toLocaleString('en-IN', {
-                      timeZone: 'Asia/Kolkata',
-                    })}
-                  </p>
-                  <Button
-                    to={`/recruiter/assessment/${job.job_id}`}
-                    className="mt-4 w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
-                  >
-                    View Job
-                  </Button>
+        <div className="flex-1 py-12 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto">
+            {/* Header */}
+            <div className="text-center mb-12">
+              <div className="flex items-center justify-center mb-6">
+                <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl shadow-lg">
+                  <Briefcase className="w-12 h-12 text-white" />
                 </div>
-              ))}
+              </div>
+              <h1 className="text-5xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent mb-4">
+                Recruiter Dashboard
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400 text-lg max-w-2xl mx-auto">
+                Manage your recruitment process, track jobs, and monitor
+                candidates efficiently
+              </p>
             </div>
-          </div>
 
-          {/* Candidates Overview */}
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm">
-            <h3 className="text-xl font-semibold mb-4 flex items-center gap-2 text-gray-900 dark:text-gray-100">
-              <User className="w-6 h-6 text-indigo-600" /> Candidate Overview
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {candidates.map((candidate) => (
-                <div
-                  key={candidate.candidate_id}
-                  className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                      {candidate.name}
-                    </h4>
-                    <span
-                      className={`px-3 py-1 text-xs font-medium rounded-full ${
-                        candidate.status === 'blocked'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-green-100 text-green-800'
-                      }`}
-                    >
-                      {candidate.status}
-                    </span>
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+              <div className="group bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 p-8 hover:shadow-2xl hover:scale-105 transition-all duration-300">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl">
+                    <Briefcase className="w-8 h-8 text-white" />
                   </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                    Job: {candidate.job_title}
-                  </p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                    Score: {candidate.total_score}%
-                  </p>
-                  <Link
-                    to={`/recruiter/candidate/${candidate.candidate_id}`}
-                    className="inline-block w-full text-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200"
-                  >
-                    View Details
-                  </Link>
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                      {jobs.active.length +
+                        jobs.suspended.length +
+                        jobs.deleted.length}
+                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      Total Jobs
+                    </div>
+                  </div>
                 </div>
-              ))}
+                <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full w-full"></div>
+                </div>
+              </div>
+              <div className="group bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 p-8 hover:shadow-2xl hover:scale-105 transition-all duration-300">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-3 bg-gradient-to-r from-emerald-500 to-green-600 rounded-xl">
+                    <Briefcase className="w-8 h-8 text-white" />
+                  </div>
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                      {jobs.active.length}
+                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      Active Jobs
+                    </div>
+                  </div>
+                </div>
+                <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-500 to-green-600 rounded-full transition-all duration-500"
+                    style={{
+                      width: `${
+                        jobs.active.length +
+                          jobs.suspended.length +
+                          jobs.deleted.length >
+                        0
+                          ? (jobs.active.length /
+                              (jobs.active.length +
+                                jobs.suspended.length +
+                                jobs.deleted.length)) *
+                            100
+                          : 0
+                      }%`,
+                    }}
+                  ></div>
+                </div>
+              </div>
+              <div className="group bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 p-8 hover:shadow-2xl hover:scale-105 transition-all duration-300">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-3 bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl">
+                    <User className="w-8 h-8 text-white" />
+                  </div>
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                      {candidates.length}
+                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      Total Candidates
+                    </div>
+                  </div>
+                </div>
+                <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-amber-500 to-orange-600 rounded-full w-full"></div>
+                </div>
+              </div>
             </div>
-          </div>
 
-          {/* Recent Activity */}
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mt-4">
-            <h3 className="text-xl font-semibold mb-4 flex items-center gap-2 text-gray-900 dark:text-gray-100">
-              <Clock className="w-6 h-6 text-indigo-600" /> Recent Activity
-            </h3>
-            <p className="text-base text-gray-700 dark:text-gray-300">
-              Last login:{' '}
-              {new Date().toLocaleString('en-IN', {
-                timeZone: 'Asia/Kolkata',
-              })}
-            </p>
-            <p className="text-base text-gray-700 dark:text-gray-300">
-              Last job created:{' '}
-              {jobs.active.length > 0
-                ? new Date(jobs.active[0].created_at).toLocaleString('en-IN', {
+            {/* Recruiter Info */}
+            <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300">
+              <div className="flex items-center mb-6">
+                <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
+                  <Briefcase className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    My Profile
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Manage your company details
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex flex-col gap-3">
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Company:
+                    </span>{' '}
+                    {recruiter.company}
+                  </p>
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Total Jobs:
+                    </span>{' '}
+                    {jobs.active.length +
+                      jobs.suspended.length +
+                      jobs.deleted.length}
+                  </p>
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Active Jobs:
+                    </span>{' '}
+                    {jobs.active.length}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-3">
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Suspended Jobs:
+                    </span>{' '}
+                    {jobs.suspended.length}
+                  </p>
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Deleted Jobs:
+                    </span>{' '}
+                    {jobs.deleted.length}
+                  </p>
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Total Candidates:
+                    </span>{' '}
+                    {candidates.length}
+                  </p>
+                  <LinkButton
+                    to="/recruiter/profile"
+                    className="w-fit bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+                  >
+                    Edit Profile
+                  </LinkButton>
+                </div>
+              </div>
+            </div>
+
+            {/* Active Jobs */}
+            <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300">
+              <div className="flex items-center mb-6">
+                <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
+                  <Briefcase className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    Active Jobs
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    View your currently active job postings
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {jobs.active.map((job) => (
+                  <div
+                    key={job.job_id}
+                    className="bg-white/50 dark:bg-gray-700/50 backdrop-blur-sm rounded-2xl shadow-md border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-xl hover:scale-105 transition-all duration-300"
+                  >
+                    {recruiter.logo && (
+                      <img
+                        src={`http://localhost:5000/static/uploads/${recruiter.logo}`}
+                        alt="Company Logo"
+                        className="w-full h-32 object-contain rounded-lg mb-4"
+                      />
+                    )}
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                      {job.job_title}
+                    </h4>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                      Created:{' '}
+                      {new Date(job.created_at).toLocaleString('en-IN', {
+                        timeZone: 'Asia/Kolkata',
+                      })}
+                    </p>
+                    <Button
+                      to={`/recruiter/assessment/${job.job_id}`}
+                      className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
+                    >
+                      View Job
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Candidates Overview */}
+            <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300">
+              <div className="flex items-center mb-6">
+                <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
+                  <User className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    Candidate Overview
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Monitor candidate progress and details
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {candidates.map((candidate) => (
+                  <div
+                    key={candidate.candidate_id}
+                    className="bg-white/50 dark:bg-gray-700/50 backdrop-blur-sm rounded-2xl shadow-md border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-xl hover:scale-105 transition-all duration-300"
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        {candidate.name}
+                      </h4>
+                      <span
+                        className={`px-3 py-1 text-xs font-medium rounded-full ${
+                          candidate.status === 'blocked'
+                            ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                            : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                        }`}
+                      >
+                        {candidate.status}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                      Job: {candidate.job_title}
+                    </p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                      Score: {candidate.total_score}%
+                    </p>
+                    <Link
+                      to={`/recruiter/candidate/${candidate.candidate_id}`}
+                      className="inline-block w-full text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
+                    >
+                      View Details
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Recent Activity */}
+            <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 hover:shadow-2xl transition-all duration-300">
+              <div className="flex items-center mb-6">
+                <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
+                  <Clock className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    Recent Activity
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Track your latest actions
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3">
+                <p className="text-base text-gray-600 dark:text-gray-400">
+                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                    Last login:
+                  </span>{' '}
+                  {new Date().toLocaleString('en-IN', {
                     timeZone: 'Asia/Kolkata',
-                  })
-                : 'N/A'}
-            </p>
+                  })}
+                </p>
+                <p className="text-base text-gray-600 dark:text-gray-400">
+                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                    Last job created:
+                  </span>{' '}
+                  {jobs.active.length > 0
+                    ? new Date(jobs.active[0].created_at).toLocaleString(
+                        'en-IN',
+                        { timeZone: 'Asia/Kolkata' }
+                      )
+                    : 'N/A'}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Right Sidebar */}
-        <div className="w-96 p-6 space-y-8 bg-white dark:bg-gray-900 shadow-sm dark:border-l dark:border-gray-800">
-          <div className="text-center">
-            {recruiter.company_image && (
+        <div className="w-96 p-6 bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg shadow-sm border-l border-gray-200/50 dark:border-gray-700/50">
+          <div className="text-center space-y-4">
+            {recruiter.logo && (
               <img
-                className="w-24 h-24 rounded-full mx-auto mb-4 object-cover border-4 border-indigo-600"
-                src={`http://localhost:5000/static/uploads/${recruiter.company_image}`}
+                className="w-24 h-24 rounded-full mx-auto object-cover border-4 border-indigo-600 dark:border-indigo-400"
+                src={`http://localhost:5000/static/uploads/${recruiter.logo}`}
                 alt="Company Logo"
               />
             )}
             <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
               {recruiter.company}
             </h3>
-            <p className="text-base text-gray-500 dark:text-gray-400">
+            <p className="text-base text-gray-600 dark:text-gray-400">
               Good Afternoon, Recruiter 🔥
             </p>
-            <p className="text-base text-indigo-600 mt-2 flex items-center gap-2 justify-center">
-              Active Jobs: {jobs.active.length}
+            <p className="text-base text-indigo-600 dark:text-indigo-400 flex items-center gap-2 justify-center">
+              <Briefcase className="w-5 h-5" /> Active Jobs:{' '}
+              {jobs.active.length}
             </p>
             <Button
-              className={'w-full mt-4'}
-              to={'/recruiter/create-assessment'}
+              to="/recruiter/create-assessment"
+              className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
             >
               Create New Job
             </Button>
           </div>
         </div>
       </div>
-    </>
+    </div>
   )
 }
 

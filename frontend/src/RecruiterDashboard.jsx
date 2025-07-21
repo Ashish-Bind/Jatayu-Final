@@ -11,19 +11,18 @@ import {
   Trash2,
   Calendar,
   User2,
-  Badge,
   Award,
   Code,
   User,
   GraduationCap,
-  Layers3,
   BrainCircuit,
 } from 'lucide-react'
 import Button from './components/Button'
-import { format, set } from 'date-fns'
+import { format } from 'date-fns'
 import LinkButton from './components/LinkButton'
 import FormInput from './components/FormInput'
 import Select from 'react-select'
+import { baseUrl } from './utils/utils'
 
 const formatDate = (date) => {
   return format(new Date(date), 'MMM d, yyyy')
@@ -32,20 +31,20 @@ const formatDate = (date) => {
 const getPriorityColor = (priority) => {
   switch (priority) {
     case 5:
-      return 'bg-green-300 text-green-800 dark:bg-green-900 dark:text-green-200'
+      return 'bg-gradient-to-r from-green-400 to-emerald-600 text-white'
     case 3:
-      return 'bg-blue-300 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+      return 'bg-gradient-to-r from-blue-400 to-indigo-600 text-white'
     case 2:
-      return 'bg-yellow-300 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+      return 'bg-gradient-to-r from-yellow-400 to-amber-600 text-white'
     default:
-      return 'bg-gray-300 text-gray-800 dark:bg-gray-700 dark:text-gray-200'
+      return 'bg-gradient-to-r from-gray-300 to-gray-500 text-gray-800'
   }
 }
 
 const RecruiterDashboard = () => {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const [isloading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [assessments, setAssessments] = useState([])
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -78,7 +77,7 @@ const RecruiterDashboard = () => {
     }
 
     // Fetch assessments
-    fetch('http://localhost:5000/api/recruiter/assessments', {
+    fetch(`${baseUrl}/recruiter/assessments`, {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
     })
@@ -97,7 +96,7 @@ const RecruiterDashboard = () => {
       })
 
     // Fetch degrees
-    fetch('http://localhost:5000/api/recruiter/degrees')
+    fetch(`${baseUrl}/recruiter/degrees`)
       .then((response) => {
         if (!response.ok) throw new Error('Failed to fetch degrees')
         return response.json()
@@ -116,7 +115,7 @@ const RecruiterDashboard = () => {
       })
 
     // Fetch branches
-    fetch('http://localhost:5000/api/recruiter/branches')
+    fetch(`${baseUrl}/recruiter/branches`)
       .then((response) => {
         if (!response.ok) throw new Error('Failed to fetch branches')
         return response.json()
@@ -194,7 +193,6 @@ const RecruiterDashboard = () => {
     // Validate required fields
     const requiredFields = [
       'job_title',
-      ,
       'experience_min',
       'experience_max',
       'duration',
@@ -204,12 +202,14 @@ const RecruiterDashboard = () => {
     ]
     if (requiredFields.some((field) => !formData[field])) {
       setError('Please fill in all required fields')
+      setIsLoading(false)
       return
     }
 
     // Validate skills
     if (formData.skills.length === 0) {
       setError('At least one skill is required')
+      setIsLoading(false)
       return
     }
 
@@ -219,6 +219,7 @@ const RecruiterDashboard = () => {
       const end = new Date(formData.schedule_end)
       if (end < start) {
         setError('End date must be after start date')
+        setIsLoading(false)
         return
       }
     }
@@ -226,19 +227,17 @@ const RecruiterDashboard = () => {
     // Validate passout_year
     if (formData.passout_year && !/^\d{4}$/.test(formData.passout_year)) {
       setError('Passout year must be a valid 4-digit year')
+      setIsLoading(false)
       return
     }
 
     try {
-      const response = await fetch(
-        'http://localhost:5000/api/recruiter/assessments',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(formData),
-        }
-      )
+      const response = await fetch(`${baseUrl}/recruiter/assessments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(formData),
+      })
 
       const data = await response.json()
       if (response.ok) {
@@ -279,187 +278,198 @@ const RecruiterDashboard = () => {
   )
   const pastAssessments = assessments.filter(
     (assessment) =>
-      new Date(assessment.schedule_start || assessment.schedule) < currentDate
+      new Date(assessment.schedule_end || assessment.schedule) < currentDate
   )
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-gray-900 dark:via-slate-900 dark:to-indigo-950 font-sans flex flex-col">
       <Navbar />
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+        <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent mb-6">
           Recruiter Dashboard
         </h1>
 
         {error && (
           <div
-            className="bg-red-50 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-3 mb-6 rounded-md text-base flex items-center gap-2"
+            className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 mb-6 rounded-2xl shadow-lg flex items-center gap-2"
             role="alert"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
             {error}
           </div>
         )}
         {success && (
           <div
-            className="bg-green-50 dark:bg-green-900/30 border-l-4 border-green-500 text-green-700 dark:text-green-300 p-3 mb-6 rounded-md text-base flex items-center gap-2"
+            className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg border-l-4 border-green-500 text-green-700 dark:text-green-300 p-4 mb-6 rounded-2xl shadow-lg flex items-center gap-2"
             role="alert"
           >
-            <Check className="w-4 h-4" />
+            <Check className="w-5 h-5" />
             {success}
           </div>
         )}
 
         <div className="mb-6">
-          <div className="flex border-b border-gray-200 dark:border-gray-700 gap-2">
-            <button
-              className={`px-4 py-2 text-base font-medium ${
-                activeTab === 'create'
-                  ? 'border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-300'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-300'
-              }`}
-              onClick={() => setActiveTab('create')}
-            >
-              Create Assessment
-            </button>
-            <button
-              className={`px-4 py-2 text-base font-medium ${
-                activeTab === 'active'
-                  ? 'border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-300'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-300'
-              }`}
-              onClick={() => setActiveTab('active')}
-            >
-              Active Assessments
-            </button>
-            <button
-              className={`px-4 py-2 text-base font-medium ${
-                activeTab === 'past'
-                  ? 'border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-300'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-300'
-              }`}
-              onClick={() => setActiveTab('past')}
-            >
-              Past Assessments
-            </button>
+          <div className="flex border-b border-gray-200/50 dark:border-gray-700/50 gap-4">
+            {['create', 'active', 'past'].map((tab) => (
+              <button
+                key={tab}
+                className={`px-4 py-2 text-base font-medium transition-all duration-200 ${
+                  activeTab === tab
+                    ? 'border-b-2 border-indigo-600 text-indigo-600 dark:text-indigo-300'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/50'
+                }`}
+                onClick={() => setActiveTab(tab)}
+              >
+                {tab === 'create'
+                  ? 'Create Assessment'
+                  : tab === 'active'
+                  ? 'Active Assessments'
+                  : 'Past Assessments'}
+              </button>
+            ))}
           </div>
         </div>
 
         {activeTab === 'create' && (
-          <>
+          <div>
             <Button
               onClick={() => setIsFormOpen(!isFormOpen)}
-              variant="primary"
-              className="mb-6 flex items-center justify-center gap-2"
+              className="mb-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
             >
               {isFormOpen ? 'Cancel' : 'Create New Assessment'}
               {isFormOpen ? (
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               ) : (
-                <Briefcase className="w-4 h-4" />
+                <Briefcase className="w-5 h-5" />
               )}
             </Button>
 
             {isFormOpen && (
-              <div className="bg-white dark:bg-gray-900 p-6 sm:p-8 rounded-md shadow-sm border border-gray-100 dark:border-gray-800 mb-8">
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6 flex items-center gap-3">
+              <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg p-6 sm:p-8 rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 mb-8">
+                <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent mb-6 flex items-center gap-3">
                   <Briefcase className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
                   Create New Assessment
                 </h2>
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                    <FormInput
-                      label="Job Title"
-                      id="job_title"
-                      name="job_title"
-                      value={formData.job_title}
-                      onChange={handleInputChange}
-                      placeholder="Software Engineer"
-                      required
-                    />
-                    <FormInput
-                      label="Min Experience (years)"
-                      id="experience_min"
-                      type="number"
-                      name="experience_min"
-                      value={formData.experience_min}
-                      onChange={handleInputChange}
-                      min="0"
-                      step="0.1"
-                      placeholder="2"
-                      required
-                    />
-                    <FormInput
-                      label="Max Experience (years)"
-                      id="experience_max"
-                      type="number"
-                      name="experience_max"
-                      value={formData.experience_max}
-                      onChange={handleInputChange}
-                      min={formData.experience_min || 0}
-                      step="0.1"
-                      placeholder="5"
-                      required
-                    />
-                    <FormInput
-                      label="Duration (minutes)"
-                      id="duration"
-                      type="number"
-                      name="duration"
-                      value={formData.duration}
-                      onChange={handleInputChange}
-                      min="1"
-                      placeholder="30"
-                      required
-                    />
-                    <FormInput
-                      label="Number of Questions"
-                      id="num_questions"
-                      type="number"
-                      name="num_questions"
-                      value={formData.num_questions}
-                      onChange={handleInputChange}
-                      min="1"
-                      placeholder="10"
-                      required
-                    />
-                    <FormInput
-                      label="Start Date"
-                      id="schedule_start"
-                      type="datetime-local"
-                      name="schedule_start"
-                      value={
-                        formData.schedule_start
-                          ? formData.schedule_start.slice(0, 16)
-                          : ''
-                      }
-                      onChange={(e) => {
-                        const date = new Date(e.target.value + 'Z')
-                        setFormData({
-                          ...formData,
-                          schedule_start: date.toISOString(),
-                        })
-                      }}
-                      required
-                    />
-                    <FormInput
-                      label="End Date"
-                      id="schedule_end"
-                      type="datetime-local"
-                      name="schedule_end"
-                      value={
-                        formData.schedule_end
-                          ? formData.schedule_end.slice(0, 16)
-                          : ''
-                      }
-                      onChange={(e) => {
-                        const date = new Date(e.target.value + 'Z')
-                        setFormData({
-                          ...formData,
-                          schedule_end: date.toISOString(),
-                        })
-                      }}
-                      required
-                    />
+                    <div>
+                      <FormInput
+                        label="Job Title"
+                        id="job_title"
+                        name="job_title"
+                        value={formData.job_title}
+                        onChange={handleInputChange}
+                        placeholder="Software Engineer"
+                        required
+                        className="bg-white/50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 focus:ring-indigo-600 focus:border-indigo-600"
+                      />
+                    </div>
+                    <div>
+                      <FormInput
+                        label="Min Experience (years)"
+                        id="experience_min"
+                        type="number"
+                        name="experience_min"
+                        value={formData.experience_min}
+                        onChange={handleInputChange}
+                        min="0"
+                        step="0.1"
+                        placeholder="2"
+                        required
+                        className="bg-white/50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 focus:ring-indigo-600 focus:border-indigo-600"
+                      />
+                    </div>
+                    <div>
+                      <FormInput
+                        label="Max Experience (years)"
+                        id="experience_max"
+                        type="number"
+                        name="experience_max"
+                        value={formData.experience_max}
+                        onChange={handleInputChange}
+                        min={formData.experience_min || 0}
+                        step="0.1"
+                        placeholder="5"
+                        required
+                        className="bg-white/50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 focus:ring-indigo-600 focus:border-indigo-600"
+                      />
+                    </div>
+                    <div>
+                      <FormInput
+                        label="Duration (minutes)"
+                        id="duration"
+                        type="number"
+                        name="duration"
+                        value={formData.duration}
+                        onChange={handleInputChange}
+                        min="1"
+                        placeholder="30"
+                        required
+                        className="bg-white/50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 focus:ring-indigo-600 focus:border-indigo-600"
+                      />
+                    </div>
+                    <div>
+                      <FormInput
+                        label="Number of Questions"
+                        id="num_questions"
+                        type="number"
+                        name="num_questions"
+                        value={formData.num_questions}
+                        onChange={handleInputChange}
+                        min="1"
+                        placeholder="10"
+                        required
+                        className="bg-white/50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 focus:ring-indigo-600 focus:border-indigo-600"
+                      />
+                    </div>
+                    <div>
+                      <FormInput
+                        label="Start Date"
+                        id="schedule_start"
+                        type="datetime-local"
+                        name="schedule_start"
+                        value={
+                          formData.schedule_start
+                            ? new Date(formData.schedule_start)
+                                .toISOString()
+                                .slice(0, 16)
+                            : ''
+                        }
+                        onChange={(e) => {
+                          const date = new Date(e.target.value)
+                          setFormData({
+                            ...formData,
+                            schedule_start: date.toISOString(),
+                          })
+                        }}
+                        required
+                        className="bg-white/50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 focus:ring-indigo-600 focus:border-indigo-600"
+                      />
+                    </div>
+                    <div>
+                      <FormInput
+                        label="End Date"
+                        id="schedule_end"
+                        type="datetime-local"
+                        name="schedule_end"
+                        value={
+                          formData.schedule_end
+                            ? new Date(formData.schedule_end)
+                                .toISOString()
+                                .slice(0, 16)
+                            : ''
+                        }
+                        onChange={(e) => {
+                          const date = new Date(e.target.value)
+                          setFormData({
+                            ...formData,
+                            schedule_end: date.toISOString(),
+                          })
+                        }}
+                        required
+                        className="bg-white/50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 focus:ring-indigo-600 focus:border-indigo-600"
+                      />
+                    </div>
                     <div>
                       <label
                         htmlFor="degree_required"
@@ -483,22 +493,22 @@ const RecruiterDashboard = () => {
                           control: (provided) => ({
                             ...provided,
                             borderColor: '#e5e7eb',
-                            borderRadius: '0.375rem',
+                            borderRadius: '0.5rem',
                             padding: '2px',
-                            backgroundColor: '#fff',
-                            '&:hover': { borderColor: '#6366f1' },
+                            backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                            '&:hover': { borderColor: '#4f46e5' },
                           }),
                           menu: (provided) => ({
                             ...provided,
-                            backgroundColor: '#fff',
+                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
                           }),
                           option: (provided, state) => ({
                             ...provided,
                             backgroundColor: state.isSelected
-                              ? '#6366f1'
+                              ? '#4f46e5'
                               : state.isFocused
                               ? '#e0e7ff'
-                              : '#fff',
+                              : 'rgba(255, 255, 255, 0.9)',
                             color: state.isSelected ? '#fff' : '#374151',
                           }),
                           singleValue: (provided) => ({
@@ -510,7 +520,7 @@ const RecruiterDashboard = () => {
                           ...theme,
                           colors: {
                             ...theme.colors,
-                            primary: '#6366f1',
+                            primary: '#4f46e5',
                             primary25: '#e0e7ff',
                           },
                         })}
@@ -538,22 +548,22 @@ const RecruiterDashboard = () => {
                           control: (provided) => ({
                             ...provided,
                             borderColor: '#e5e7eb',
-                            borderRadius: '0.375rem',
+                            borderRadius: '0.5rem',
                             padding: '2px',
-                            backgroundColor: '#fff',
-                            '&:hover': { borderColor: '#6366f1' },
+                            backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                            '&:hover': { borderColor: '#4f46e5' },
                           }),
                           menu: (provided) => ({
                             ...provided,
-                            backgroundColor: '#fff',
+                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
                           }),
                           option: (provided, state) => ({
                             ...provided,
                             backgroundColor: state.isSelected
-                              ? '#6366f1'
+                              ? '#4f46e5'
                               : state.isFocused
                               ? '#e0e7ff'
-                              : '#fff',
+                              : 'rgba(255, 255, 255, 0.9)',
                             color: state.isSelected ? '#fff' : '#374151',
                           }),
                           singleValue: (provided) => ({
@@ -565,23 +575,26 @@ const RecruiterDashboard = () => {
                           ...theme,
                           colors: {
                             ...theme.colors,
-                            primary: '#6366f1',
+                            primary: '#4f46e5',
                             primary25: '#e0e7ff',
                           },
                         })}
                       />
                     </div>
-                    <FormInput
-                      label="Passout Year"
-                      id="passout_year"
-                      type="number"
-                      name="passout_year"
-                      value={formData.passout_year}
-                      onChange={handleInputChange}
-                      min="1900"
-                      max={new Date().getFullYear() + 5}
-                      placeholder="2023"
-                    />
+                    <div>
+                      <FormInput
+                        label="Passout Year"
+                        id="passout_year"
+                        type="number"
+                        name="passout_year"
+                        value={formData.passout_year}
+                        onChange={handleInputChange}
+                        min="1900"
+                        max={new Date().getFullYear() + 5}
+                        placeholder="2023"
+                        className="bg-white/50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 focus:ring-indigo-600 focus:border-indigo-600"
+                      />
+                    </div>
                     <div>
                       <label
                         htmlFor="passout_year_required"
@@ -595,7 +608,7 @@ const RecruiterDashboard = () => {
                         name="passout_year_required"
                         checked={formData.passout_year_required}
                         onChange={handleInputChange}
-                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                        className="h-4 w-4 text-indigo-600 focus:ring-indigo-600 border-gray-300 dark:border-gray-600 rounded"
                       />
                     </div>
                     <div className="sm:col-span-2">
@@ -610,7 +623,7 @@ const RecruiterDashboard = () => {
                         name="job_description"
                         value={formData.job_description}
                         onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-700 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300 transition-all duration-200 resize-y"
+                        className="w-full px-3 py-2 bg-white/50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-indigo-600 focus:border-indigo-600 text-base placeholder-gray-400 dark:placeholder-gray-300 transition-all duration-200 resize-y"
                         rows="5"
                         placeholder="E.g., Looking for a backend engineer with experience in Django, REST APIs, and PostgreSQL..."
                       />
@@ -627,7 +640,7 @@ const RecruiterDashboard = () => {
                         name="custom_prompt"
                         value={formData.custom_prompt}
                         onChange={handleInputChange}
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-700 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300 transition-all duration-200 resize-y"
+                        className="w-full px-3 py-2 bg-white/50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-indigo-600 focus:border-indigo-600 text-base placeholder-gray-400 dark:placeholder-gray-300 transition-all duration-200 resize-y"
                         rows="4"
                         placeholder="E.g., I want code snippet based questions..."
                       />
@@ -642,14 +655,14 @@ const RecruiterDashboard = () => {
                           name="name"
                           value={newSkill.name}
                           onChange={handleSkillChange}
-                          className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-700 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300 transition-all duration-200"
+                          className="flex-1 px-3 py-2 bg-white/50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-indigo-600 focus:border-indigo-600 text-base placeholder-gray-400 dark:placeholder-gray-300 transition-all duration-200"
                           placeholder="e.g., Python"
                         />
                         <select
                           name="priority"
                           value={newSkill.priority}
                           onChange={handleSkillChange}
-                          className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-700 dark:text-gray-200 text-base"
+                          className="px-3 py-2 bg-white/50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-indigo-600 focus:border-indigo-600 text-base text-gray-700 dark:text-gray-200"
                         >
                           <option value="low">Low</option>
                           <option value="medium">Medium</option>
@@ -658,11 +671,10 @@ const RecruiterDashboard = () => {
                         <Button
                           type="button"
                           onClick={addSkill}
-                          variant="primary"
-                          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 dark:bg-indigo-500 text-white dark:text-gray-100 rounded-md hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors"
+                          className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
                         >
                           Add
-                          <Plus className="w-4 h-4" />
+                          <Plus className="w-5 h-5" />
                         </Button>
                       </div>
                       {formData.skills.length > 0 && (
@@ -670,7 +682,7 @@ const RecruiterDashboard = () => {
                           {formData.skills.map((skill, index) => (
                             <li
                               key={index}
-                              className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 p-3 rounded-md shadow-sm"
+                              className="flex items-center justify-between bg-white/50 dark:bg-gray-800/50 backdrop-blur-lg p-3 rounded-xl shadow-sm"
                             >
                               <span className="text-base text-gray-700 dark:text-gray-200">
                                 {skill.name} ({skill.priority})
@@ -678,7 +690,7 @@ const RecruiterDashboard = () => {
                               <button
                                 type="button"
                                 onClick={() => removeSkill(index)}
-                                className="text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 focus:outline-none transition-colors"
+                                className="text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-all duration-200"
                               >
                                 <Trash2 className="w-5 h-5" />
                               </button>
@@ -691,9 +703,8 @@ const RecruiterDashboard = () => {
                   <div className="flex justify-end">
                     <Button
                       type="submit"
-                      variant="primary"
-                      disabled={isloading}
-                      className="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 dark:bg-indigo-500 text-white dark:text-gray-100 rounded-md hover:bg-indigo-700 dark:hover:bg-indigo-600 transition-colors shadow-md hover:shadow-lg"
+                      disabled={isLoading}
+                      className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
                     >
                       Create Assessment
                       <Briefcase className="w-5 h-5" />
@@ -702,164 +713,45 @@ const RecruiterDashboard = () => {
                 </form>
               </div>
             )}
-          </>
+          </div>
         )}
 
         {activeTab === 'active' && (
-          <>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <div>
+            <h2 className="text-xl font-semibold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent mb-4 flex items-center gap-2">
               <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-300" />
               Active Assessments
             </h2>
             {activeAssessments.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {activeAssessments.map((assessment) => (
                   <div
                     key={assessment.job_id}
-                    className="bg-white dark:bg-gray-900 p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100 dark:border-gray-800 max-w-md w-full"
+                    className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg p-6 rounded-2xl shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 border border-gray-200/50 dark:border-gray-700/50 max-w-md w-full"
                   >
-                    {assessment.company_image && (
+                    {assessment.logo && (
                       <img
-                        src={`http://localhost:5000/static/uploads/${assessment.company_image}`}
+                        src={`http://localhost:5000/static/uploads/${assessment.logo}`}
                         alt="Company Logo"
-                        className="w-full h-32 object-cover rounded-lg mb-4"
+                        className="w-full h-32 object-cover rounded-xl mb-4 border border-gray-200/50 dark:border-gray-700/50"
                       />
                     )}
                     <div className="flex items-center gap-4 mb-4">
-                      <div className="bg-indigo-100 dark:bg-indigo-950 p-3 rounded-lg">
-                        <Briefcase className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
+                      <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl">
+                        <Briefcase className="w-8 h-8 text-white" />
                       </div>
                       <div>
                         <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">
                           {assessment.job_title}
                         </h3>
-                        <p className="text-base text-gray-600 dark:text-gray-300">
+                        <p className="text-base text-gray-600 dark:text-gray-400">
                           {assessment.company}
                         </p>
                       </div>
                     </div>
-
-                    <div className="space-y-3 text-base text-gray-600 dark:text-gray-300 mb-3">
+                    <div className="space-y-3 text-base text-gray-600 dark:text-gray-400 mb-4">
                       <div className="flex items-center gap-2">
                         <Award className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                        <span className="text-base">
-                          {assessment.experience_min}-
-                          {assessment.experience_max} years
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                        <div className="inline-flex items-center rounded-md">
-                          {formatDate(
-                            assessment.schedule_start || assessment.schedule
-                          )}{' '}
-                          -{' '}
-                          {formatDate(
-                            assessment.schedule_end || assessment.schedule
-                          )}
-                        </div>
-                      </div>
-                      {assessment.degree_required && (
-                        <div className="flex items-center gap-2">
-                          <GraduationCap className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                          <span className="text-base">
-                            {assessment.degree_required}
-                          </span>
-                        </div>
-                      )}
-                      {assessment.degree_branch && (
-                        <div className="flex items-center gap-2">
-                          <BrainCircuit className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                          <span className="text-base">
-                            {assessment.degree_branch}
-                          </span>
-                        </div>
-                      )}
-                      {assessment.passout_year && (
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                          <span className="text-base">
-                            Passout Year: {assessment.passout_year}
-                            {assessment.passout_year_required
-                              ? ' (Required)'
-                              : ' (Optional)'}
-                          </span>
-                        </div>
-                      )}
-                      {assessment.skills && assessment.skills.length > 0 && (
-                        <div className="flex flex-wrap gap-2 items-center">
-                          <Code className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                          {assessment.skills.map((skill, index) => (
-                            <span
-                              key={index}
-                              className={`inline-flex items-center px-3 py-1 rounded-full font-medium text-xs ${getPriorityColor(
-                                skill.priority
-                              )}`}
-                            >
-                              {skill.name}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <LinkButton
-                      to={`/recruiter/candidates/${assessment.job_id}`}
-                      variant="primary"
-                      className={'flex items-center gap-2 justify-center'}
-                    >
-                      View Candidates
-                    </LinkButton>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm text-center border border-gray-200 dark:border-gray-600 mb-8">
-                <p className="text-base text-gray-700 dark:text-gray-200">
-                  No active assessments.
-                </p>
-              </div>
-            )}
-          </>
-        )}
-
-        {activeTab === 'past' && (
-          <>
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-              <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-300" />
-              Past Assessments
-            </h2>
-            {pastAssessments.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {pastAssessments.map((assessment) => (
-                  <div
-                    key={assessment.job_id}
-                    className="bg-white dark:bg-gray-900 p-6 rounded-md shadow-sm hover:shadow-md transition-all duration-300 border border-gray-100 dark:border-gray-800 max-w-md w-full"
-                  >
-                    {assessment.company_image && (
-                      <img
-                        src={`http://localhost:5000/static/uploads/${assessment.company_image}`}
-                        alt="Company Logo"
-                        className="w-full h-32 object-cover rounded-lg mb-4"
-                      />
-                    )}
-                    <div className="flex items-center gap-4 mb-2">
-                      <div className="bg-indigo-100 dark:bg-indigo-950 p-3 rounded-lg">
-                        <Briefcase className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
-                      </div>
-                      <div>
-                        <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                          {assessment.job_title}
-                        </h3>
-                        <p className="text-base text-gray-600 dark:text-gray-300">
-                          {assessment.company}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3 text-base text-gray-600 dark:text-gray-300 mb-5">
-                      <div className="flex items-center gap-2">
-                        <User className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                         <span>
                           {assessment.experience_min}-
                           {assessment.experience_max} years
@@ -867,7 +759,7 @@ const RecruiterDashboard = () => {
                       </div>
                       <div className="flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                        <div className="inline-flex items-center rounded-md text-base">
+                        <span>
                           {formatDate(
                             assessment.schedule_start || assessment.schedule
                           )}{' '}
@@ -875,28 +767,24 @@ const RecruiterDashboard = () => {
                           {formatDate(
                             assessment.schedule_end || assessment.schedule
                           )}
-                        </div>
+                        </span>
                       </div>
                       {assessment.degree_required && (
                         <div className="flex items-center gap-2">
                           <GraduationCap className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                          <span className="text-base">
-                            {assessment.degree_required}
-                          </span>
+                          <span>{assessment.degree_required}</span>
                         </div>
                       )}
                       {assessment.degree_branch && (
                         <div className="flex items-center gap-2">
                           <BrainCircuit className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                          <span className="text-base">
-                            {assessment.degree_branch}
-                          </span>
+                          <span>{assessment.degree_branch}</span>
                         </div>
                       )}
                       {assessment.passout_year && (
                         <div className="flex items-center gap-2">
                           <Calendar className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                          <span className="text-base">
+                          <span>
                             Passout Year: {assessment.passout_year}
                             {assessment.passout_year_required
                               ? ' (Required)'
@@ -920,49 +808,152 @@ const RecruiterDashboard = () => {
                         </div>
                       )}
                     </div>
+                    <LinkButton
+                      to={`/recruiter/candidates/${assessment.job_id}`}
+                      className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
+                    >
+                      View Candidates
+                      <ChevronRight className="w-5 h-5" />
+                    </LinkButton>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg p-6 rounded-2xl shadow-lg text-center border border-gray-200/50 dark:border-gray-700/50">
+                <p className="text-base text-gray-600 dark:text-gray-400">
+                  No active assessments.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
 
+        {activeTab === 'past' && (
+          <div>
+            <h2 className="text-xl font-semibold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent mb-4 flex items-center gap-2">
+              <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-300" />
+              Past Assessments
+            </h2>
+            {pastAssessments.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {pastAssessments.map((assessment) => (
+                  <div
+                    key={assessment.job_id}
+                    className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg p-6 rounded-2xl shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-300 border border-gray-200/50 dark:border-gray-700/50 max-w-md w-full"
+                  >
+                    {assessment.logo && (
+                      <img
+                        src={`http://localhost:5000/static/uploads/${assessment.logo}`}
+                        alt="Company Logo"
+                        className="w-full h-32 object-cover rounded-xl mb-4 border border-gray-200/50 dark:border-gray-700/50"
+                      />
+                    )}
+                    <div className="flex items-center gap-4 mb-4">
+                      <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl">
+                        <Briefcase className="w-8 h-8 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                          {assessment.job_title}
+                        </h3>
+                        <p className="text-base text-gray-600 dark:text-gray-400">
+                          {assessment.company}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-3 text-base text-gray-600 dark:text-gray-400 mb-4">
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        <span>
+                          {assessment.experience_min}-
+                          {assessment.experience_max} years
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                        <span>
+                          {formatDate(
+                            assessment.schedule_start || assessment.schedule
+                          )}{' '}
+                          -{' '}
+                          {formatDate(
+                            assessment.schedule_end || assessment.schedule
+                          )}
+                        </span>
+                      </div>
+                      {assessment.degree_required && (
+                        <div className="flex items-center gap-2">
+                          <GraduationCap className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                          <span>{assessment.degree_required}</span>
+                        </div>
+                      )}
+                      {assessment.degree_branch && (
+                        <div className="flex items-center gap-2">
+                          <BrainCircuit className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                          <span>{assessment.degree_branch}</span>
+                        </div>
+                      )}
+                      {assessment.passout_year && (
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                          <span>
+                            Passout Year: {assessment.passout_year}
+                            {assessment.passout_year_required
+                              ? ' (Required)'
+                              : ' (Optional)'}
+                          </span>
+                        </div>
+                      )}
+                      {assessment.skills && assessment.skills.length > 0 && (
+                        <div className="flex flex-wrap gap-2 items-center">
+                          <Code className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                          {assessment.skills.map((skill, index) => (
+                            <span
+                              key={index}
+                              className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getPriorityColor(
+                                skill.priority
+                              )}`}
+                            >
+                              {skill.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <div className="flex flex-col gap-2">
                       <div className="flex gap-2 justify-between">
                         <LinkButton
                           to={`/recruiter/candidates/${assessment.job_id}`}
-                          variant="link"
-                          className={
-                            'flex items-center gap-2 justify-center hover:underline'
-                          }
+                          className="flex-1 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/50 px-4 py-2 rounded-xl text-center transition-all duration-200"
                         >
                           View Candidates
                         </LinkButton>
                         <LinkButton
                           to={`/recruiter/report/${assessment.job_id}`}
-                          variant="link"
-                          className={
-                            'flex items-center gap-2 justify-center hover:underline'
-                          }
+                          className="flex-1 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/50 px-4 py-2 rounded-xl text-center transition-all duration-200"
                         >
                           View Report
                         </LinkButton>
                       </div>
                       <LinkButton
                         to={`/recruiter/combined-report/${assessment.job_id}`}
-                        variant="primary"
-                        className={
-                          'flex items-center gap-2 justify-center w-full'
-                        }
+                        className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
                       >
                         View Combined Report
+                        <ChevronRight className="w-5 h-5" />
                       </LinkButton>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm text-center border border-gray-200 dark:border-gray-600">
-                <p className="text-base text-gray-700 dark:text-gray-200">
+              <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg p-6 rounded-2xl shadow-lg text-center border border-gray-200/50 dark:border-gray-700/50">
+                <p className="text-base text-gray-600 dark:text-gray-400">
                   No past assessments.
                 </p>
               </div>
             )}
-          </>
+          </div>
         )}
       </div>
     </div>

@@ -15,19 +15,21 @@ import {
   ChevronRight,
   ArrowRight,
   Star,
+  DollarSign,
+  CheckCircle,
 } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import { useAuth } from '../context/AuthContext'
 import LinkButton from '../components/LinkButton'
-import { motion, useInView } from 'motion/react'
+import { motion, useInView } from 'framer-motion'
 import { Typewriter } from 'react-simple-typewriter'
 
 const Home = () => {
   const featuresRef = useRef(null)
   const howItWorksRef = useRef(null)
   const testimonialsRef = useRef(null)
+  const pricingRef = useRef(null)
 
-  // Define scroll handler functions
   const scrollToFeatures = () => {
     featuresRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
@@ -37,23 +39,23 @@ const Home = () => {
   const scrollToTestimonials = () => {
     testimonialsRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
+  const scrollToPricing = () => {
+    pricingRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
 
-  // UseInView for scroll-triggered animations
   const featuresInView = useInView(featuresRef, { once: true, amount: 0.3 })
   const howItWorksInView = useInView(howItWorksRef, { once: true, amount: 0.3 })
   const testimonialsInView = useInView(testimonialsRef, {
     once: true,
     amount: 0.3,
   })
+  const pricingInView = useInView(pricingRef, { once: true, amount: 0.3 })
 
-  // Animation variants
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
-      transition: {
-        staggerChildren: 0.2,
-      },
+      transition: { staggerChildren: 0.2 },
     },
   }
 
@@ -63,13 +65,9 @@ const Home = () => {
   }
 
   const buttonVariants = {
-    hover: {
-      scale: 1.05,
-      transition: { duration: 0.3, yoyo: Infinity },
-    },
+    hover: { scale: 1.05, transition: { duration: 0.3 } },
   }
 
-  // Testimonial data
   const testimonials = [
     {
       id: 1,
@@ -100,49 +98,47 @@ const Home = () => {
     },
   ]
 
-  // Features data
   const features = [
     {
       title: 'Adaptive MCQs',
       description:
         'AI-generated questions that adapt to candidate skill level in real-time.',
-      icon: <Zap className="w-8 h-8 text-indigo-600 dark:text-indigo-300" />,
+      icon: <Zap className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />,
     },
     {
       title: 'Skill Gap Analysis',
       description:
         'Comprehensive reports showing strengths and areas for improvement.',
       icon: (
-        <BarChart2 className="w-8 h-8 text-indigo-600 dark:text-indigo-300" />
+        <BarChart2 className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
       ),
     },
     {
       title: 'Secure Proctoring',
       description: 'AI-powered cheating detection with facial recognition.',
-      icon: <Shield className="w-8 h-8 text-indigo-600 dark:text-indigo-300" />,
+      icon: <Shield className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />,
     },
     {
       title: 'Detailed Reports',
       description: 'Actionable insights with visual data representations.',
       icon: (
-        <FileText className="w-8 h-8 text-indigo-600 dark:text-indigo-300" />
+        <FileText className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
       ),
     },
     {
       title: 'Time Efficient',
       description: '50% faster assessments with same accuracy.',
-      icon: <Clock className="w-8 h-8 text-indigo-600 dark:text-indigo-300" />,
+      icon: <Clock className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />,
     },
     {
       title: 'Mobile Friendly',
       description: 'Fully responsive design works on any device.',
       icon: (
-        <Smartphone className="w-8 h-8 text-indigo-600 dark:text-indigo-300" />
+        <Smartphone className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
       ),
     },
   ]
 
-  // Steps data
   const steps = [
     {
       number: 1,
@@ -166,112 +162,157 @@ const Home = () => {
     },
   ]
 
+  const pricingPlans = [
+    {
+      name: 'Free',
+      price: 0,
+      description: 'Perfect for individuals or small teams getting started.',
+      features: ['5 assessments/month', 'Basic reports', 'Community support'],
+      buttonText: 'Get Started',
+      buttonLink: '/candidate/signup',
+      isPopular: false,
+    },
+    {
+      name: 'Basic',
+      price: 999,
+      description: 'Ideal for small businesses or educators.',
+      features: ['50 assessments/month', 'Basic AI reports', 'Email support'],
+      buttonText: 'Subscribe',
+      buttonLink: '/recruiter/subscriptions',
+      isPopular: false,
+    },
+    {
+      name: 'Pro',
+      price: 4999,
+      description: 'Best for growing teams needing advanced features.',
+      features: [
+        'Unlimited assessments',
+        'Advanced AI reports',
+        'Proctoring',
+        'Priority support',
+      ],
+      buttonText: 'Subscribe',
+      buttonLink: '/recruiter/subscriptions',
+      isPopular: true,
+    },
+    {
+      name: 'Enterprise',
+      price: null,
+      description: 'Custom solutions for large organizations.',
+      features: [
+        'Unlimited assessments',
+        'Custom AI reports',
+        'Dedicated manager',
+        'API access',
+      ],
+      buttonText: 'Contact Sales',
+      buttonLink: '/contact',
+      isPopular: false,
+    },
+  ]
+
   const { user } = useAuth()
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-gray-900 dark:via-slate-900 dark:to-indigo-950 font-sans">
       <Navbar
         scrollToFeatures={scrollToFeatures}
         scrollToHowItWorks={scrollToHowItWorks}
         scrollToTestimonials={scrollToTestimonials}
+        scrollToPricing={scrollToPricing}
       />
 
       {/* Hero Section */}
       <motion.div
-        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-24"
+        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-24 text-center"
         initial={{ opacity: 0, y: 50 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.8, ease: 'easeOut' }}
       >
-        <div className="text-center">
-          <motion.h1
-            className="font-mono text-4xl md:text-6xl font-extrabold text-gray-900 dark:text-white mb-6"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2, duration: 0.6 }}
-          >
-            Intelligent MCQ Assessments <br />& Analytics Platform
-          </motion.h1>
-          <motion.p
-            className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.6 }}
-          >
-            Revolutionizing recruitment and education with{' '}
-            <span className="dark:text-white text-black">
-              <Typewriter
-                words={[
-                  'AI-powered adaptive testing',
-                  'Skill Gap Analysis',
-                  'Secure Proctoring',
-                  'Detailed Reports',
-                  'Time Efficient Assessments',
-                ]}
-                loop={5}
-                cursor
-                cursorStyle="|"
-                typeSpeed={70}
-                deleteSpeed={50}
-                delaySpeed={1000}
-              />
-            </span>
-          </motion.p>
-
-          <motion.div
-            className="mt-12 flex flex-col sm:flex-row justify-center gap-4"
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-          >
-            {user ? (
+        <motion.div className="flex items-center justify-center mb-6">
+          <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl shadow-lg">
+            <Zap className="w-12 h-12 text-white" />
+          </div>
+        </motion.div>
+        <motion.h1
+          className="text-4xl md:text-6xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent mb-6"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.6 }}
+        >
+          Intelligent MCQ Assessments <br /> & Analytics Platform
+        </motion.h1>
+        <motion.p
+          className="text-xl text-gray-600 dark:text-gray-400 max-w-3xl mx-auto"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4, duration: 0.6 }}
+        >
+          Revolutionizing recruitment and education with{' '}
+          <span className="font-semibold">
+            <Typewriter
+              words={[
+                'AI-powered adaptive testing',
+                'Skill Gap Analysis',
+                'Secure Proctoring',
+                'Detailed Reports',
+                'Time Efficient Assessments',
+              ]}
+              loop={0}
+              cursor
+              cursorStyle="|"
+              typeSpeed={70}
+              deleteSpeed={50}
+              delaySpeed={1000}
+            />
+          </span>
+        </motion.p>
+        <motion.div
+          className="mt-12 flex flex-col sm:flex-row justify-center gap-4"
+          variants={containerVariants}
+          initial="hidden"
+          animate="visible"
+        >
+          {user ? (
+            <motion.div variants={itemVariants}>
+              <LinkButton
+                to="/candidate/dashboard"
+                className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
+                variants={buttonVariants}
+                whileHover="hover"
+              >
+                Go to Dashboard <ArrowRight className="w-5 h-5" />
+              </LinkButton>
+            </motion.div>
+          ) : (
+            <>
               <motion.div variants={itemVariants}>
                 <LinkButton
-                  to="/candidate/dashboard"
-                  variant="primary"
-                  className="flex items-center gap-2 justify-center"
-                  whilehover="hover"
+                  to="/candidate/signup"
+                  className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
                   variants={buttonVariants}
+                  whileHover="hover"
                 >
-                  Go to Dashboard <ArrowRight className="w-4 h-4" />
+                  Get Started as Candidate <ArrowRight className="w-5 h-5" />
                 </LinkButton>
               </motion.div>
-            ) : (
-              <>
-                <motion.div variants={itemVariants}>
-                  <LinkButton
-                    to="/candidate/signup"
-                    variant="primary"
-                    className="flex items-center gap-2 justify-center"
-                    whilehover="hover"
-                    variants={buttonVariants}
-                  >
-                    Get Started as Candidate <ArrowRight className="w-4 h-4" />
-                  </LinkButton>
-                </motion.div>
-                <motion.div variants={itemVariants}>
-                  <LinkButton
-                    to="/recruiter/login"
-                    variant="bordered"
-                    className="text-indigo-600 dark:text-indigo-300 border-indigo-600 dark:border-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900"
-                    whilehover="hover"
-                    variants={buttonVariants}
-                  >
-                    Recruiter Login <ChevronRight className="w-4 h-4" />
-                  </LinkButton>
-                </motion.div>
-              </>
-            )}
-          </motion.div>
-        </div>
+              <motion.div variants={itemVariants}>
+                <LinkButton
+                  to="/recruiter/login"
+                  className="border-2 border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400 px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/50 transition-all duration-300"
+                  variants={buttonVariants}
+                  whileHover="hover"
+                >
+                  Recruiter Login <ChevronRight className="w-5 h-5" />
+                </LinkButton>
+              </motion.div>
+            </>
+          )}
+        </motion.div>
       </motion.div>
 
       {/* Features Section */}
-      <div
-        id="features"
-        className="py-16 bg-indigo-50 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-900"
-        ref={featuresRef}
-      >
+      <div id="features" className="py-16" ref={featuresRef}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             className="text-center mb-12"
@@ -279,10 +320,15 @@ const Home = () => {
             animate={featuresInView ? { opacity: 1 } : { opacity: 0 }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white">
+            <div className="flex items-center justify-center mb-6">
+              <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl shadow-lg">
+                <Star className="w-12 h-12 text-white" />
+              </div>
+            </div>
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent">
               Powerful Features
             </h2>
-            <p className="mt-4 text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+            <p className="mt-4 text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
               Everything you need to transform your assessment process
             </p>
           </motion.div>
@@ -295,16 +341,15 @@ const Home = () => {
             {features.map((feature, index) => (
               <motion.div
                 key={index}
-                className="bg-white dark:bg-gray-900 border dark:border-gray-800 p-6 rounded-lg shadow-sm hover:shadow-md transition-shadow"
+                className="group bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-2xl hover:scale-105 transition-all duration-300"
                 variants={itemVariants}
-                whilehover={{ scale: 1.05 }}
-                transition={{ type: 'spring', stiffness: 100 }}
+                whileHover={{ scale: 1.05 }}
               >
                 <div className="mb-4">{feature.icon}</div>
-                <h3 className="text-lg font-mono font-medium text-gray-900 dark:text-white mb-2">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
                   {feature.title}
                 </h3>
-                <p className="text-gray-600 dark:text-gray-300">
+                <p className="text-gray-600 dark:text-gray-400">
                   {feature.description}
                 </p>
               </motion.div>
@@ -314,11 +359,7 @@ const Home = () => {
       </div>
 
       {/* How It Works Section */}
-      <div
-        id="how-it-works"
-        className="py-16 bg-white dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800"
-        ref={howItWorksRef}
-      >
+      <div id="how-it-works" className="py-16" ref={howItWorksRef}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             className="text-center mb-12"
@@ -326,10 +367,15 @@ const Home = () => {
             animate={howItWorksInView ? { opacity: 1 } : { opacity: 0 }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white">
+            <div className="flex items-center justify-center mb-6">
+              <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl shadow-lg">
+                <FileText className="w-12 h-12 text-white" />
+              </div>
+            </div>
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent">
               How It Works
             </h2>
-            <p className="mt-4 text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+            <p className="mt-4 text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
               Simple steps to better assessments
             </p>
           </motion.div>
@@ -342,20 +388,19 @@ const Home = () => {
             {steps.map((step) => (
               <motion.div
                 key={step.number}
-                className="text-center"
+                className="text-center bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-2xl hover:scale-105 transition-all duration-300"
                 variants={itemVariants}
-                whilehover={{ scale: 1.1 }}
-                transition={{ type: 'spring', stiffness: 100 }}
+                whileHover={{ scale: 1.05 }}
               >
-                <div className="w-16 h-16 bg-indigo-100 dark:bg-indigo-900 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <span className="text-indigo-600 dark:text-indigo-300 font-bold text-xl">
+                <div className="w-12 h-12 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <span className="text-white font-bold text-xl">
                     {step.number}
                   </span>
                 </div>
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
                   {step.title}
                 </h3>
-                <p className="text-gray-600 dark:text-gray-300">
+                <p className="text-gray-600 dark:text-gray-400">
                   {step.description}
                 </p>
               </motion.div>
@@ -364,12 +409,92 @@ const Home = () => {
         </div>
       </div>
 
+      {/* Pricing Section */}
+      <div id="pricing" className="py-16" ref={pricingRef}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div
+            className="text-center mb-12"
+            initial={{ opacity: 0 }}
+            animate={pricingInView ? { opacity: 1 } : { opacity: 0 }}
+            transition={{ duration: 0.6 }}
+          >
+            <div className="flex items-center justify-center mb-6">
+              <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl shadow-lg">
+                <DollarSign className="w-12 h-12 text-white" />
+              </div>
+            </div>
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent">
+              Pricing Plans
+            </h2>
+            <p className="mt-4 text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+              Choose a plan that fits your needs and start transforming your
+              assessments
+            </p>
+          </motion.div>
+          <motion.div
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8"
+            variants={containerVariants}
+            initial="hidden"
+            animate={pricingInView ? 'visible' : 'hidden'}
+          >
+            {pricingPlans.map((plan) => (
+              <motion.div
+                key={plan.name}
+                className={`group bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-2xl hover:scale-105 transition-all duration-300 relative ${
+                  plan.isPopular
+                    ? 'ring-2 ring-indigo-500 dark:ring-indigo-400'
+                    : ''
+                }`}
+                variants={itemVariants}
+                whileHover={{ scale: 1.05 }}
+              >
+                {plan.isPopular && (
+                  <span className="absolute top-0 right-0 bg-indigo-600 text-white text-xs font-semibold px-3 py-1 rounded-bl-lg rounded-tr-lg">
+                    Most Popular
+                  </span>
+                )}
+                <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                  {plan.name}
+                </h3>
+                <p className="text-gray-600 dark:text-gray-400 mb-4">
+                  {plan.description}
+                </p>
+                <div className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+                  {plan.price === null
+                    ? 'Custom'
+                    : `₹${plan.price.toLocaleString('en-IN')}`}
+                  {plan.price !== null && (
+                    <span className="text-sm font-normal">/month</span>
+                  )}
+                </div>
+                <ul className="text-gray-600 dark:text-gray-400 mb-6 space-y-2">
+                  {plan.features.map((feature, index) => (
+                    <li key={index} className="flex items-center gap-2">
+                      <CheckCircle className="w-5 h-5 text-emerald-500" />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+                <LinkButton
+                  to={plan.buttonLink}
+                  className={`w-full bg-gradient-to-r ${
+                    plan.name === 'Enterprise'
+                      ? 'from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700'
+                      : 'from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'
+                  } text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 shadow-lg hover:shadow-xl`}
+                  variants={buttonVariants}
+                  whileHover="hover"
+                >
+                  {plan.buttonText} <ArrowRight className="w-5 h-5" />
+                </LinkButton>
+              </motion.div>
+            ))}
+          </motion.div>
+        </div>
+      </div>
+
       {/* Testimonials Section */}
-      <div
-        id="testimonials"
-        className="py-16 bg-indigo-50 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-950"
-        ref={testimonialsRef}
-      >
+      <div id="testimonials" className="py-16" ref={testimonialsRef}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             className="text-center mb-12"
@@ -377,10 +502,15 @@ const Home = () => {
             animate={testimonialsInView ? { opacity: 1 } : { opacity: 0 }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white">
+            <div className="flex items-center justify-center mb-6">
+              <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl shadow-lg">
+                <Star className="w-12 h-12 text-white" />
+              </div>
+            </div>
+            <h2 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent">
               What Our Users Say
             </h2>
-            <p className="mt-4 text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+            <p className="mt-4 text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
               Don't just take our word for it
             </p>
           </motion.div>
@@ -393,27 +523,26 @@ const Home = () => {
             {testimonials.map((testimonial) => (
               <motion.div
                 key={testimonial.id}
-                className="bg-white dark:bg-gray-900 border dark:border-gray-800 p-6 rounded-lg shadow-sm"
+                className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-2xl hover:scale-105 transition-all duration-300"
                 variants={itemVariants}
-                whilehover={{ scale: 1.05 }}
-                transition={{ type: 'spring', stiffness: 300 }}
+                whileHover={{ scale: 1.05 }}
               >
                 <div className="flex items-center mb-4">
                   <img
                     src={testimonial.avatar}
                     alt={testimonial.name}
-                    className="w-12 h-12 rounded-full mr-4"
+                    className="w-12 h-12 rounded-full mr-4 border-2 border-indigo-600 dark:border-indigo-400"
                   />
                   <div>
-                    <h4 className="font-medium text-gray-900 dark:text-white">
+                    <h4 className="text-lg font-semibold text-gray-900 dark:text-white">
                       {testimonial.name}
                     </h4>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
                       {testimonial.role}
                     </p>
                   </div>
                 </div>
-                <p className="text-gray-600 dark:text-gray-300 italic">
+                <p className="text-gray-600 dark:text-gray-400 italic">
                   "{testimonial.content}"
                 </p>
                 <div className="mt-4 flex">
@@ -438,15 +567,20 @@ const Home = () => {
 
       {/* CTA Section */}
       <motion.div
-        className="py-16 bg-indigo-600 dark:bg-indigo-800 text-white"
+        className="py-16 bg-gradient-to-r from-indigo-600 to-purple-600 text-white"
         initial={{ opacity: 0, y: 50 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.8 }}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <motion.div className="flex items-center justify-center mb-6">
+            <div className="p-4 bg-white rounded-2xl shadow-lg">
+              <ArrowRight className="w-12 h-12 text-indigo-600" />
+            </div>
+          </motion.div>
           <motion.h2
-            className="text-3xl font-bold mb-6"
+            className="text-4xl font-bold mb-6"
             initial={{ opacity: 0 }}
             whileInView={{ opacity: 1 }}
             transition={{ delay: 0.2, duration: 0.6 }}
@@ -472,21 +606,21 @@ const Home = () => {
             <motion.div variants={itemVariants}>
               <Link
                 to="/recruiter/login"
-                className="px-6 py-3 rounded-md text-sm font-medium text-indigo-600 dark:text-indigo-300 bg-white dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center gap-2"
-                whilehover="hover"
+                className="bg-white text-indigo-600 px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-100 transition-all duration-300 shadow-lg hover:shadow-xl"
                 variants={buttonVariants}
+                whileHover="hover"
               >
-                Request Demo <ChevronRight className="w-4 h-4" />
+                Request Demo <ChevronRight className="w-5 h-5" />
               </Link>
             </motion.div>
             <motion.div variants={itemVariants}>
               <Link
                 to="/candidate/signup"
-                className="px-6 py-3 rounded-md text-sm font-medium text-white bg-indigo-800 dark:bg-indigo-900 hover:bg-indigo-700 dark:hover:bg-indigo-800 flex items-center justify-center gap-2"
-                whilehover="hover"
+                className="bg-gradient-to-r from-indigo-800 to-purple-800 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-900 hover:to-purple-900 transition-all duration-300 shadow-lg hover:shadow-xl"
                 variants={buttonVariants}
+                whileHover="hover"
               >
-                Try for Free <ArrowRight className="w-4 h-4" />
+                Try for Free <ArrowRight className="w-5 h-5" />
               </Link>
             </motion.div>
           </motion.div>
@@ -495,7 +629,7 @@ const Home = () => {
 
       {/* Footer */}
       <motion.footer
-        className="bg-gray-900 dark:bg-gray-900 text-white"
+        className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg border-t border-gray-200/50 dark:border-gray-700/50"
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
         viewport={{ once: true }}
@@ -510,14 +644,15 @@ const Home = () => {
             viewport={{ once: true }}
           >
             <motion.div variants={itemVariants}>
-              <h3 className="text-sm font-semibold text-gray-400 dark:text-gray-300 tracking-wider uppercase mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 tracking-wider uppercase mb-4">
                 Product
               </h3>
               <ul className="space-y-3">
                 <li>
                   <a
                     href="#features"
-                    className="text-gray-300 dark:text-gray-200 hover:text-white"
+                    className="text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                    onClick={scrollToFeatures}
                   >
                     Features
                   </a>
@@ -525,15 +660,26 @@ const Home = () => {
                 <li>
                   <a
                     href="#how-it-works"
-                    className="text-gray-300 dark:text-gray-200 hover:text-white"
+                    className="text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                    onClick={scrollToHowItWorks}
                   >
                     How It Works
                   </a>
                 </li>
                 <li>
                   <a
+                    href="#pricing"
+                    className="text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                    onClick={scrollToPricing}
+                  >
+                    Pricing
+                  </a>
+                </li>
+                <li>
+                  <a
                     href="#testimonials"
-                    className="text-gray-300 dark:text-gray-200 hover:text-white"
+                    className="text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                    onClick={scrollToTestimonials}
                   >
                     Testimonials
                   </a>
@@ -541,38 +687,116 @@ const Home = () => {
               </ul>
             </motion.div>
             <motion.div variants={itemVariants}>
-              <h3 className="text-sm font-semibold text-gray-400 dark:text-gray-300 tracking-wider uppercase mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 tracking-wider uppercase mb-4">
                 Connect
               </h3>
               <ul className="space-y-3">
                 <li>
                   <a
-                    href="#"
-                    className="text-gray-300 dark:text-gray-200 hover:text-white flex items-center gap-2"
+                    href="https://github.com"
+                    className="text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-2"
                   >
-                    <Github className="w-4 h-4" /> GitHub
+                    <Github className="w-5 h-5" /> GitHub
                   </a>
                 </li>
                 <li>
                   <a
-                    href="#"
-                    className="text-gray-300 dark:text-gray-200 hover:text-white flex items-center gap-2"
+                    href="mailto:support@aiquiz.com"
+                    className="text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-2"
                   >
-                    <Mail className="w-4 h-4" /> Contact
+                    <Mail className="w-5 h-5" /> Contact
                   </a>
+                </li>
+                <li>
+                  <a
+                    href="https://twitter.com"
+                    className="text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-2"
+                  >
+                    <Twitter className="w-5 h-5" /> Twitter
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://linkedin.com"
+                    className="text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center gap-2"
+                  >
+                    <Linkedin className="w-5 h-5" /> LinkedIn
+                  </a>
+                </li>
+              </ul>
+            </motion.div>
+            <motion.div variants={itemVariants}>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 tracking-wider uppercase mb-4">
+                Company
+              </h3>
+              <ul className="space-y-3">
+                <li>
+                  <Link
+                    to="/about"
+                    className="text-gray-600 dark:to-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                  >
+                    About Us
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to="/careers"
+                    className="text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                  >
+                    Careers
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to="/privacy"
+                    className="text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                  >
+                    Privacy Policy
+                  </Link>
+                </li>
+              </ul>
+            </motion.div>
+            <motion.div variants={itemVariants}>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 tracking-wider uppercase mb-4">
+                Resources
+              </h3>
+              <ul className="space-y-3">
+                <li>
+                  <Link
+                    to="/blog"
+                    className="text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                  >
+                    Blog
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to="/help"
+                    className="text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                  >
+                    Help Center
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to="/api"
+                    className="text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                  >
+                    API Docs
+                  </Link>
                 </li>
               </ul>
             </motion.div>
           </motion.div>
           <motion.div
-            className="mt-12 pt-8 border-t border-gray-800 dark:border-gray-700 flex flex-col md:flex-row justify-between items-center"
+            className="mt-12 pt-8 border-t border-gray-200/50 dark:border-gray-700/50 flex flex-col md:flex-row justify-between items-center"
             variants={containerVariants}
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true }}
           >
             <motion.p
-              className="text-gray-400 dark:text-gray-300 text-sm"
+              className="text-gray-600 dark:text-gray-400 text-sm"
               variants={itemVariants}
             >
               © {new Date().getFullYear()} AI Quiz. All rights reserved.
@@ -581,15 +805,35 @@ const Home = () => {
               className="mt-4 md:mt-0 flex space-x-6"
               variants={containerVariants}
             >
-              <motion.a
-                href="#"
-                className="text-gray-400 dark:text-gray-300 hover:text-white"
-                variants={itemVariants}
-                whilehover={{ scale: 1.2 }}
-              >
-                <span className="sr-only">GitHub</span>
-                <Github className="h-6 w-6" />
-              </motion.a>
+              {[
+                { icon: Github, href: 'https://github.com', label: 'GitHub' },
+                {
+                  icon: Twitter,
+                  href: 'https://twitter.com',
+                  label: 'Twitter',
+                },
+                {
+                  icon: Linkedin,
+                  href: 'https://linkedin.com',
+                  label: 'LinkedIn',
+                },
+                {
+                  icon: Facebook,
+                  href: 'https://facebook.com',
+                  label: 'Facebook',
+                },
+              ].map(({ icon: Icon, href, label }) => (
+                <motion.a
+                  key={label}
+                  href={href}
+                  className="text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                  variants={itemVariants}
+                  whileHover={{ scale: 1.2 }}
+                >
+                  <span className="sr-only">{label}</span>
+                  <Icon className="h-6 w-6" />
+                </motion.a>
+              ))}
             </motion.div>
           </motion.div>
         </div>

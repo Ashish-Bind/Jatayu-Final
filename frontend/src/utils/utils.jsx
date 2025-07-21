@@ -4,6 +4,8 @@ import html2canvas from 'html2canvas'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
+export const baseUrl = import.meta.env.VITE_API_BASE_URL
+
 export function capitalizeFirstLetter(str) {
   if (typeof str !== 'string' || str.length === 0) {
     return '' // Handle empty or non-string inputs
@@ -260,7 +262,7 @@ export const captureSnapshot = async (
     formData.append('snapshot', blob, `snapshot.jpg`)
 
     const response = await fetch(
-      `http://localhost:5000/api/assessment/capture-snapshot/${attemptId}`,
+      `${baseUrl}/assessment/capture-snapshot/${attemptId}`,
       {
         method: 'POST',
         body: formData,
@@ -297,7 +299,8 @@ export const fetchNextQuestion = (
   setUsedMcqIds,
   usedMcqIds,
   questionNumber,
-  setIsGeneratingQuestion
+  setIsGeneratingQuestion,
+  proctoringData
 ) => {
   setQuestionPending(true)
   setIsLoading(true)
@@ -306,14 +309,20 @@ export const fetchNextQuestion = (
   }
   const queryParams =
     usedMcqIds.length > 0 ? `?used_mcq_ids=${JSON.stringify(usedMcqIds)}` : ''
-  fetch(
-    `http://localhost:5000/api/assessment/next-question/${attemptId}${queryParams}`,
-    {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-    }
-  )
+  fetch(`${baseUrl}/assessment/next-question/${attemptId}${queryParams}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({
+      proctoring_data: {
+        tab_switches: proctoringData.tabSwitches,
+        fullscreen_warnings: proctoringData.fullscreenWarnings,
+        remarks: proctoringData.proctoringRemarks,
+        forced_termination: proctoringData.forced,
+        termination_reason: proctoringData.remark,
+      },
+    }),
+  })
     .then((response) => {
       if (!response.ok) {
         return response.json().then((data) => {
@@ -430,7 +439,7 @@ export const handleAnswerSubmit = (
       ),
     },
   ])
-  fetch(`http://localhost:5000/api/assessment/submit-answer/${attemptId}`, {
+  fetch(`${baseUrl}/assessment/submit-answer/${attemptId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
@@ -490,7 +499,7 @@ export const endAssessment = (
   onSuccess
 ) => {
   setIsLoading(true)
-  fetch(`http://localhost:5000/api/assessment/end/${attemptId}`, {
+  fetch(`${baseUrl}/assessment/end/${attemptId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',

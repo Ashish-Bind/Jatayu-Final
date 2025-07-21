@@ -21,6 +21,7 @@ import Navbar from './components/Navbar'
 import LinkButton from './components/LinkButton'
 import Button from './components/Button'
 import Select from 'react-select'
+import { baseUrl } from './utils/utils'
 
 const CompleteProfile = () => {
   const { user } = useAuth()
@@ -55,7 +56,7 @@ const CompleteProfile = () => {
 
   useEffect(() => {
     // Fetch candidate profile
-    fetch(`http://localhost:5000/api/candidate/profile/${user.id}`, {
+    fetch(`${baseUrl}/candidate/profile/${user.id}`, {
       credentials: 'include',
     })
       .then((response) => {
@@ -96,7 +97,7 @@ const CompleteProfile = () => {
       })
 
     // Fetch enforce_face_verification flag
-    fetch('http://localhost:5000/api/auth/check', {
+    fetch(`${baseUrl}/auth/check`, {
       credentials: 'include',
     })
       .then((response) => {
@@ -120,7 +121,7 @@ const CompleteProfile = () => {
       })
 
     // Fetch degrees
-    fetch('http://localhost:5000/api/candidate/degrees', {
+    fetch(`${baseUrl}/candidate/degrees`, {
       credentials: 'include',
     })
       .then((response) => {
@@ -144,7 +145,7 @@ const CompleteProfile = () => {
       })
 
     // Fetch branches
-    fetch('http://localhost:5000/api/candidate/branches', {
+    fetch(`${baseUrl}/candidate/branches`, {
       credentials: 'include',
     })
       .then((response) => {
@@ -304,14 +305,11 @@ const CompleteProfile = () => {
     data.append('enforce_face_verification', enforceFaceVerification) // ✅ Add this
 
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/candidate/profile/${user.id}`,
-        {
-          method: 'POST',
-          credentials: 'include',
-          body: data,
-        }
-      )
+      const response = await fetch(`${baseUrl}/candidate/profile/${user.id}`, {
+        method: 'POST',
+        credentials: 'include',
+        body: data,
+      })
 
       const result = await response.json()
       if (response.ok) {

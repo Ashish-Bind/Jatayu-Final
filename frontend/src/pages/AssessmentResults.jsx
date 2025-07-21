@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import Navbar from '../components/Navbar'
 import Button from '../components/Button'
 import { Home, XCircle, RefreshCw } from 'lucide-react'
-import { formatDate } from '../utils/utils'
+import { baseUrl, formatDate } from '../utils/utils'
 import LinkButton from '../components/LinkButton'
 
 const AssessmentResults = () => {
@@ -25,14 +25,11 @@ const AssessmentResults = () => {
       setIsLoading(true)
       setErrorMessage('')
       try {
-        const response = await fetch(
-          `http://localhost:5000/api/assessment/all`,
-          {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-          }
-        )
+        const response = await fetch(`${baseUrl}/assessment/all`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+        })
         if (!response.ok) {
           const data = await response.json()
           if (response.status === 401 || response.status === 403) {

@@ -27,7 +27,7 @@ import Button from '../components/Button'
 import { useAuth } from '../context/AuthContext'
 import Navbar from '../components/Navbar'
 import { ThemeContext } from '../context/ThemeContext'
-import { isMajoritySnapshotsValid } from '../utils/utils'
+import { baseUrl, isMajoritySnapshotsValid } from '../utils/utils'
 
 ChartJS.register(
   CategoryScale,
@@ -54,7 +54,7 @@ const CandidateResult = () => {
 
   useEffect(() => {
     setIsLoading(true)
-    fetch(`http://localhost:5000/api/assessment/results/${attemptId}`, {
+    fetch(`${baseUrl}/assessment/results/${attemptId}`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',

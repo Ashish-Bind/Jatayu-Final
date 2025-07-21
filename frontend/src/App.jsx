@@ -27,6 +27,10 @@ const Analytics = lazy(() => import('./Analytics'))
 const CandidateProctoring = lazy(() =>
   import('./components/CandidateProctoring')
 )
+const Subscriptions = lazy(() => import('./pages/Subscriptions'))
+const SuperadminLogin = lazy(() => import('./SuperadminLogin'))
+const AdminDashboard = lazy(() => import('./AdminDashboard'))
+const SubscriptionDetails = lazy(() => import('./SubscriptionDetails'))
 
 export default function App() {
   const { user } = useAuth()
@@ -52,6 +56,10 @@ export default function App() {
 
         <Route element={<AuthRoute redirectPath="/recruiter/dashboard" />}>
           <Route path="/recruiter/login" element={<RecruiterLogin />} />
+        </Route>
+
+        <Route element={<AuthRoute redirectPath="/superadmin/dashboard" />}>
+          <Route path="/superadmin/login" element={<SuperadminLogin />} />
         </Route>
 
         <Route
@@ -83,9 +91,22 @@ export default function App() {
           <Route path="report/:job_id" element={<PostAssessmentReport />} />
           <Route path="combined-report/:job_id" element={<CombinedReport />} />
           <Route path="analytics" element={<Analytics />} />
+          <Route path="subscriptions" element={<Subscriptions />} />
           <Route
             path="candidate/:candidateId/proctoring"
             element={<CandidateProctoring />}
+          />
+        </Route>
+
+        <Route
+          element={
+            <ProtectedRoute allowedRoles={['superadmin']} redirectPath="/" />
+          }
+        >
+          <Route path="/admin" element={<AdminDashboard />} />
+          <Route
+            path="/subscription-details/:id"
+            element={<SubscriptionDetails />}
           />
         </Route>
       </Routes>

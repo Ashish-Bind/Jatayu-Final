@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
+import { baseUrl } from '../utils/utils'
 
 const RecruiterDashboard = () => {
   const { user } = useAuth()
@@ -25,7 +26,7 @@ const RecruiterDashboard = () => {
     if (!user || user.role !== 'recruiter') return
 
     // Fetch assessments for recruiter using user.id
-    fetch('http://localhost:5000/api/recruiter/assessments')
+    fetch(`${baseUrl}/recruiter/assessments`)
       .then((response) => response.json())
       .then((data) => setAssessments(data))
       .catch((error) => {
@@ -45,14 +46,11 @@ const RecruiterDashboard = () => {
     setSuccess('')
 
     try {
-      const response = await fetch(
-        'http://localhost:5000/api/recruiter/assessments',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
-        }
-      )
+      const response = await fetch(`${baseUrl}/recruiter/assessments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      })
 
       const data = await response.json()
       if (response.ok) {

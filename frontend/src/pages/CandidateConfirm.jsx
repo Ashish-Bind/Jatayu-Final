@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Mail, ArrowRight } from 'lucide-react'
 import LinkButton from '../components/LinkButton'
 import Navbar from '../components/Navbar'
+import { baseUrl } from '../utils/utils'
 
 const CandidateConfirm = () => {
   const [searchParams] = useSearchParams()
@@ -23,7 +24,7 @@ const CandidateConfirm = () => {
     setMessage('')
 
     try {
-      const response = await fetch('http://localhost:5000/api/auth/confirm', {
+      const response = await fetch(`${baseUrl}/auth/confirm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token }),
