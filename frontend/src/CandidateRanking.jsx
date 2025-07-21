@@ -12,7 +12,7 @@ import {
 } from 'chart.js'
 import { Briefcase, X, ChevronRight, Download } from 'lucide-react'
 import Navbar from './components/Navbar'
-import { downloadAsPDF } from './utils/utils'
+import { downloadAsPDF, baseUrl } from './utils/utils'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
@@ -22,7 +22,7 @@ const CandidateRankings = () => {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    fetch(`http://localhost:5000/api/recruiter/candidates/${job_id}`, {
+    fetch(`${baseUrl}/recruiter/candidates/${job_id}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

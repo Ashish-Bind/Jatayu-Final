@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 # Configure upload directory
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'static', 'uploads'))
 SNAPSHOT_DIR = os.path.join(PROJECT_ROOT, 'snapshots')
+WEBCAM_DIR = os.path.join(PROJECT_ROOT, 'webcam_images')
+os.makedirs(WEBCAM_DIR, exist_ok=True)  
 os.makedirs(SNAPSHOT_DIR, exist_ok=True)
 
 BAND_ORDER = ["good", "better", "perfect"]
@@ -326,7 +328,7 @@ def capture_snapshot(attempt_id):
         logger.error(f"Error in capture_snapshot for attempt_id={attempt_id}: {str(e)}")
         return jsonify({'error': f'Internal server error: {str(e)}'}), 500
 
-@assessment_api_bp.route('/next-question/<int:attempt_id>', methods=['GET'])
+@assessment_api_bp.route('/next-question/<int:attempt_id>', methods=['POST'])
 def get_next_question(attempt_id):
     """Retrieve the next question for the assessment."""
     try:
@@ -343,7 +345,7 @@ def get_next_question(attempt_id):
         job_id = state['job_id']
         job_description = state.get('job_description', "")
         custom_prompt = state.get('custom_prompt', "")
-        used_mcq_ids = [q['mcq_id'] for q in state['asked_questions']]
+        asked_questions = state['asked_questions']  # Full question data
 
         elapsed_time = datetime.utcnow().timestamp() - start_time
         if question_count >= total_questions or elapsed_time >= test_duration:
@@ -354,7 +356,46 @@ def get_next_question(attempt_id):
                 state['performance_log'][skill]["accuracy_percent"] = round((correct / total) * 100, 2) if total > 0 else 0.0
 
             attempt = AssessmentAttempt.query.get(attempt_id)
-            proctoring_data = state.get('proctoring_data', {})
+            if not attempt:
+                logger.error(f"AssessmentAttempt not found for attempt_id={attempt_id}")
+                return jsonify({'error': 'Assessment attempt not found'}), 404
+
+            candidate = Candidate.query.get(attempt.candidate_id)
+            data = request.get_json()
+            proctoring_data_in = data.get('proctoring_data', {})
+            proctoring_data = state.get('proctoring_data', {
+                "snapshots": [],
+                "tab_switches": 0,
+                "fullscreen_warnings": 0,
+                "remarks": [],
+                "forced_termination": False,
+                "termination_reason": ""
+            })
+
+            proctoring_data.update({
+            "tab_switches": proctoring_data_in.get("tab_switches", proctoring_data["tab_switches"]),
+            "fullscreen_warnings": proctoring_data_in.get("fullscreen_warnings", proctoring_data["fullscreen_warnings"]),
+            "remarks": proctoring_data.get("remarks", []) + proctoring_data_in.get("remarks", []),
+            "forced_termination": proctoring_data_in.get("forced_termination", proctoring_data["forced_termination"]),
+            "termination_reason": proctoring_data_in.get("termination_reason", proctoring_data["termination_reason"])
+            })
+
+            if candidate.profile_picture:
+                profile_image_path = os.path.normpath(os.path.join(PROJECT_ROOT, candidate.profile_picture))
+                for snapshot in proctoring_data["snapshots"]:
+                    snapshot_path = os.path.normpath(os.path.join(PROJECT_ROOT, snapshot["path"]))
+                    is_match, remark = compare_images(snapshot_path, profile_image_path)
+                    proctoring_data["remarks"].append(f"Snapshot at {snapshot['timestamp']}: {remark}")
+                    snapshot["is_valid"] = is_match
+                    # Optional cleanup
+                    # try:
+                    #     if os.path.exists(snapshot_path):
+                    #         os.remove(snapshot_path)
+                    # except Exception as e:
+                    #     logger.error(f"Failed to delete snapshot {snapshot_path}: {str(e)}")
+            else:
+                proctoring_data["remarks"].append("No candidate profile image available for comparison")
+
             performance_log = state['performance_log']
             performance_log['proctoring_data'] = proctoring_data
             attempt.performance_log = performance_log
@@ -380,14 +421,14 @@ def get_next_question(attempt_id):
             band = state['current_band_per_skill'][skill]
             available = [
                 q for q in state['question_bank'].get(band, {}).get(skill, [])
-                if q['mcq_id'] not in used_mcq_ids
+                if q['mcq_id'] not in [aq['mcq_id'] for aq in asked_questions]
             ]
 
             question = None
             if question_count > 0:
                 try:
                     logger.debug(f"Generating question for skill={skill}, band={band}, attempt_id={attempt_id}")
-                    question_data = generate_single_question(skill, band, job_id, job_description, used_question_ids=used_mcq_ids)
+                    question_data = generate_single_question(skill, band, job_id, job_description, used_questions=asked_questions)
                     if question_data:
                         question = {
                             "mcq_id": question_data["mcq_id"],
@@ -398,7 +439,9 @@ def get_next_question(attempt_id):
                                 question_data["option_c"],
                                 question_data["option_d"]
                             ],
-                            "answer": question_data[f"option_{question_data['correct_answer'].lower()}"]
+                            "answer": question_data[f"option_{question_data['correct_answer'].lower()}"],
+                            "skill": skill,
+                            "difficulty_band": band
                         }
                         state['question_bank'].setdefault(band, {}).setdefault(skill, []).append(question)
                 except (timeout_decorator.TimeoutError, google.api_core.exceptions.GoogleAPIError) as e:

@@ -1,4 +1,3 @@
-# app/models/user.py
 from app import db
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
@@ -12,6 +11,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(200))
     role = db.Column(db.String(20))  # 'candidate' or 'recruiter'
     is_active = db.Column(db.Boolean, default=False)
+    last_login = db.Column(db.DateTime, default=datetime.utcnow)  # New field
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -20,7 +20,7 @@ class User(db.Model):
         return check_password_hash(self.password_hash, password)
     
 class PasswordResetToken(db.Model):
-    __tablename__ = 'password_reset_tokens'
+    _tablename_ = 'password_reset_tokens'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     token = db.Column(db.String(255), unique=True, nullable=False)

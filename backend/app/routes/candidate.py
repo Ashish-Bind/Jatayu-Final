@@ -620,13 +620,13 @@ def get_eligible_assessments(user_id):
         )
 
         recruiter = Recruiter.query.filter_by(recruiter_id=assessment.recruiter_id).first()
-        company_image = recruiter.company_image if recruiter else None
+        logo = recruiter.logo if recruiter else None
 
         assessment_data = {
             'job_id': assessment.job_id,
             'job_title': assessment.job_title,
             'company': assessment.company,
-            'company_image': company_image,
+            'logo': logo,
             'experience_min': assessment.experience_min,
             'experience_max': assessment.experience_max,
             'degree_required': assessment.degree.degree_name if assessment.degree else None,
@@ -663,7 +663,7 @@ def get_eligible_assessments(user_id):
                     'job_id': job.job_id,
                     'job_title': job.job_title,
                     'company': job.company,
-                    'company_image': company_image,
+                    'logo': logo,
                     'attempt_id': attempt.attempt_id,
                     'status': attempt.status,
                     'attempt_date': attempt.start_time.isoformat() if attempt.start_time else None

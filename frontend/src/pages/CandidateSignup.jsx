@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { User, Mail, Lock, ArrowRight } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import Button from '../components/Button'
+import { baseUrl } from '../utils/utils'
 
 const CandidateSignup = () => {
   const [formData, setFormData] = useState({
@@ -34,7 +35,7 @@ const CandidateSignup = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:5000/api/auth/signup', {
+      const response = await fetch(`${baseUrl}/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),

@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useContext } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { ThemeContext } from '../context/ThemeContext'
 import {
   BookOpen,
   User,
@@ -15,40 +14,37 @@ import ClockLoader from '../components/ClockLoader'
 import { Link } from 'react-router-dom'
 import LinkButton from '../components/LinkButton'
 import Button from '../components/Button'
+import { format } from 'date-fns'
+import { baseUrl } from '../utils/utils'
+
+const getSkillColor = (index) => {
+  const colors = [
+    'from-blue-400 to-indigo-600',
+    'from-purple-400 to-indigo-600',
+    'from-green-400 to-emerald-600',
+    'from-yellow-400 to-amber-600',
+    'from-red-400 to-rose-600',
+  ]
+  return `bg-gradient-to-r ${colors[index % colors.length]} text-white`
+}
 
 const CandidateOverview = () => {
   const { user, logout } = useAuth()
   const [candidate, setCandidate] = useState(null)
-  const [assessments, setAssessments] = useState({
-    eligible: [],
-    all: [],
-    attempted: [],
-  })
+  const [assessments, setAssessments] = useState({})
   const [error, setError] = useState('')
 
   const links = [
-    {
-      name: 'Profile',
-      link: '/candidate/profile',
-      icon: User,
-    },
-    {
-      name: 'Dashboard',
-      link: '/candidate/dashboard',
-      icon: BookOpen,
-    },
-    {
-      name: 'Reports',
-      link: '/candidate/results',
-      icon: Award,
-    },
+    { name: 'Profile', link: '/candidate/profile', icon: User },
+    { name: 'Dashboard', link: '/candidate/dashboard', icon: BookOpen },
+    { name: 'Reports', link: '/candidate/results', icon: Award },
   ]
 
   useEffect(() => {
     if (!user || user.role !== 'candidate') return
 
     // Fetch candidate profile
-    fetch(`http://localhost:5000/api/candidate/profile/${user.id}`, {
+    fetch(`${baseUrl}/candidate/profile/${user.id}`, {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
     })
@@ -57,13 +53,10 @@ const CandidateOverview = () => {
       .catch((error) => setError(`Failed to load profile: ${error.message}`))
 
     // Fetch assessments
-    fetch(
-      `http://localhost:5000/api/candidate/eligible-assessments/${user.id}`,
-      {
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      }
-    )
+    fetch(`${baseUrl}/candidate/eligible-assessments/${user.id}`, {
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+    })
       .then((response) => response.json())
       .then((data) => setAssessments(data))
       .catch((error) =>
@@ -73,312 +66,506 @@ const CandidateOverview = () => {
 
   if (error) {
     return (
-      <div className="flex justify-center items-center h-screen text-red-600">
-        {error}
+      <div className="min-h-screen bg-gradient-to-br from-red-50 to-pink-50 dark:from-gray-900 dark:to-red-900 flex items-center justify-center">
+        <div className="text-center p-8 bg-white/70 dark:bg-gray-800/70 rounded-2xl shadow-xl border border-red-200 dark:border-red-700 backdrop-blur-lg">
+          <div className="text-red-500 dark:text-red-400 text-6xl mb-4">⚠️</div>
+          <p className="text-red-600 dark:text-red-400 text-xl font-medium">
+            Error: {error}
+          </p>
+        </div>
       </div>
     )
   }
 
   if (!candidate) {
-    return <ClockLoader />
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-gray-900 dark:to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-500 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-900 dark:text-gray-100 text-xl font-medium">
+            Loading dashboard...
+          </p>
+        </div>
+      </div>
+    )
   }
 
-  const skillColor = [
-    'bg-yellow-200 text-yellow-800',
-    'bg-pink-200 text-pink-800',
-    'bg-green-200 text-green-800',
-    'bg-orange-200 text-orange-800',
-    'bg-blue-200 text-blue-800',
-    'bg-red-200 text-red-800',
-    'bg-indigo-200 text-indigo-800',
-    'bg-cyan-200 text-cyan-800',
-    'bg-teal-200 text-teal-800',
-    'bg-purple-200 text-purple-800',
-    'bg-green-200 text-green-800',
-    'bg-orange-200 text-orange-800',
-    'bg-yellow-200 text-yellow-800',
-    'bg-blue-200 text-blue-800',
-    'bg-red-200 text-red-800',
-    'bg-teal-200 text-teal-800',
-    'bg-pink-200 text-pink-800',
-    'bg-purple-200 text-purple-800',
-    'bg-indigo-200 text-indigo-800',
-    'bg-cyan-200 text-cyan-800',
-  ]
-
   return (
-    <>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-gray-900 dark:via-slate-900 dark:to-indigo-950 flex flex-col font-sans">
       <Navbar />
-      <div
-        className={`min-h-screen transition-colors duration-300 bg-gray-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 flex`}
-      >
-        {/* Sidebar */}
-        <div className="w-64 p-6 space-y-6 bg-white dark:bg-gray-900 shadow-sm dark:border-r dark:border-gray-800">
+      <div className="flex flex-1">
+        {/* Left Sidebar */}
+        <div className="w-full lg:w-64 p-6 bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg shadow-sm border-r border-gray-200/50 dark:border-gray-700/50 lg:sticky lg:top-20">
           <nav className="space-y-4">
             {links.map((item) => (
               <LinkButton
                 key={item.name}
                 to={item.link}
-                className="w-full flex items-center gap-2 text-left p-3 text-gray-800 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-base font-medium"
+                className="w-full flex items-center gap-3 p-3 text-gray-800 dark:text-gray-100 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 rounded-xl text-base font-medium transition-all duration-200"
               >
-                <item.icon className="text-indigo-600 dark:text-indigo-200" />
+                <item.icon className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                 {item.name}
               </LinkButton>
             ))}
             <LinkButton
               onClick={logout}
-              className="w-full flex items-center gap-2 text-left p-3 text-gray-800 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg text-base font-medium"
+              className="w-full flex items-center gap-3 p-3 text-gray-800 dark:text-gray-100 hover:bg-gray-50/50 dark:hover:bg-gray-700/50 rounded-xl text-base font-medium transition-all duration-200"
             >
-              <LogOut className="text-indigo-600 dark:text-indigo-200" />
+              <LogOut className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
               Logout
             </LinkButton>
           </nav>
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 p-4">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6 rounded-xl mb-2 text-center shadow-md">
-            <h2 className="text-2xl font-semibold">
-              Sharpen Your Skills with Professional Online Courses
-            </h2>
-            <button className="mt-4 px-6 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition">
-              Join Now
-            </button>
-          </div>
-          <div
-            className={`bg-gradient-to-r ${
-              user.is_profile_complete ? 'from-green-600' : 'from-yellow-500'
-            } ${
-              user.is_profile_complete ? 'to-teal-600' : 'to-orange-500'
-            } text-white p-6 rounded-xl mb-2 text-center shadow-md`}
-          >
-            <h2 className="text-2xl font-semibold">
-              {user.is_profile_complete
-                ? 'Congratulations your profile is 100% complete'
-                : 'Complete profile helps us find the right job for you'}
-            </h2>
-            {!user.is_profile_complete && (
-              <div className="mt-4 w-full bg-gray-200 rounded-full h-2.5">
-                <div
-                  className="bg-teal-300 h-2.5 rounded-full"
-                  style={{ width: '60%' }}
-                ></div>
+        <div className="flex-1 py-12 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto">
+            {/* Header */}
+            <div className="text-center mb-12">
+              <div className="flex items-center justify-center mb-6">
+                <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl shadow-lg">
+                  <User className="w-12 h-12 text-white" />
+                </div>
               </div>
-            )}
-          </div>
+              <h1 className="text-5xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent mb-4">
+                Candidate Overview
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400 text-lg max-w-2xl mx-auto">
+                Explore job opportunities, track your applications, and enhance
+                your skills
+              </p>
+            </div>
 
-          {/* Candidate Info */}
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mb-2 border border-gray-200 dark:border-gray-700">
-            <h3 className="text-xl font-semibold mb-6 flex items-center gap-2 text-gray-900 dark:text-gray-100">
-              <User className="w-6 h-6 text-indigo-600" /> My Profile
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Left Column */}
-              <div className="flex flex-col gap-2">
-                <p className="text-base text-gray-700 dark:text-gray-300">
-                  <strong>Name:</strong> {candidate.name}
-                </p>
-                <p className="text-base text-gray-700 dark:text-gray-300">
-                  <strong>Email:</strong> {candidate.email}
-                </p>
-                <p className="text-base text-gray-700 dark:text-gray-300">
-                  <strong>Phone:</strong> {candidate.phone || 'Not provided'}
-                </p>
-                <p className="text-base text-gray-700 dark:text-gray-300">
-                  <strong>Location:</strong>{' '}
-                  {candidate.location || 'Not specified'}
-                </p>
-                <p className="text-base text-gray-700 dark:text-gray-300">
-                  <strong>Experience:</strong> {candidate.years_of_experience}{' '}
-                  years
-                </p>
-                <p className="text-base text-gray-700 dark:text-gray-300">
-                  <strong>Profile Status:</strong>{' '}
-                  <span
-                    className={`font-semibold ${
-                      candidate.is_profile_complete
-                        ? 'text-green-600'
-                        : 'text-red-500'
-                    }`}
-                  >
-                    {candidate.is_profile_complete ? 'Complete' : 'Incomplete'}
-                  </span>
-                </p>
-                <p>
-                  <strong>Resume:</strong>{' '}
-                  <a
-                    href={`http://localhost:5000/static/uploads/${candidate.resume}`}
-                    className="text-indigo-600 hover:underline"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {candidate.resume.split('/').pop() || 'Not provided'}
-                  </a>
-                </p>
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+              <div className="group bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 p-8 hover:shadow-2xl hover:scale-105 transition-all duration-300">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl">
+                    <BookOpen className="w-8 h-8 text-white" />
+                  </div>
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                      {assessments.all_assessments?.length}
+                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      Total Jobs
+                    </div>
+                  </div>
+                </div>
+                <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full w-full"></div>
+                </div>
               </div>
-
-              {/* Right Column */}
-              <div className="flex flex-col gap-2">
-                <p className="text-base text-gray-700 dark:text-gray-300">
-                  <strong>Degree:</strong> {candidate.degree}
-                </p>
-                <p className="text-base text-gray-700 dark:text-gray-300">
-                  <strong>Branch:</strong> {candidate.degree_branch}
-                </p>
-                <p className="text-base text-gray-700 dark:text-gray-300">
-                  <strong>Passout Year:</strong>{' '}
-                  {candidate.passout_year || 'Not specified'}
-                </p>
-                <p className="text-base text-gray-700 dark:text-gray-300">
-                  <strong>LinkedIn:</strong>{' '}
-                  <a
-                    href={candidate.linkedin}
-                    className="text-indigo-600 hover:underline"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {candidate.linkedin || 'Not provided'}
-                  </a>
-                </p>
-                <p className="text-base text-gray-700 dark:text-gray-300">
-                  <strong>GitHub:</strong>{' '}
-                  <a
-                    href={candidate.github}
-                    className="text-indigo-600 hover:underline"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    {candidate.github || 'Not provided'}
-                  </a>
-                </p>
-                <LinkButton
-                  to="/candidate/complete-profile"
-                  variant="primary"
-                  className={'w-fit'}
-                >
-                  Edit Profile
-                </LinkButton>
+              <div className="group bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 p-8 hover:shadow-2xl hover:scale-105 transition-all duration-300">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-3 bg-gradient-to-r from-emerald-500 to-green-600 rounded-xl">
+                    <BookOpen className="w-8 h-8 text-white" />
+                  </div>
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                      {assessments.eligible_assessments?.length}
+                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      Available Jobs
+                    </div>
+                  </div>
+                </div>
+                <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-500 to-green-600 rounded-full transition-all duration-500"
+                    style={{
+                      width: `${
+                        assessments.all_assessments?.length > 0
+                          ? (assessments.eligible_assessments.length /
+                              assessments.all_assessments.length) *
+                            100
+                          : 0
+                      }%`,
+                    }}
+                  ></div>
+                </div>
+              </div>
+              <div className="group bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 p-8 hover:shadow-2xl hover:scale-105 transition-all duration-300">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="p-3 bg-gradient-to-r from-amber-500 to-orange-600 rounded-xl">
+                    <Award className="w-8 h-8 text-white" />
+                  </div>
+                  <div className="text-right">
+                    <div className="text-3xl font-bold text-gray-900 dark:text-white">
+                      {assessments.attempted_assessments?.length}
+                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                      Attempted Jobs
+                    </div>
+                  </div>
+                </div>
+                <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-amber-500 to-orange-600 rounded-full transition-all duration-500"
+                    style={{
+                      width: `${
+                        assessments.all_assessments?.length > 0
+                          ? (assessments.attempted_assessments.length /
+                              assessments.all_assessments.length) *
+                            100
+                          : 0
+                      }%`,
+                    }}
+                  ></div>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Available Jobs */}
-          <div className="mb-2">
-            <h3 className="text-xl font-semibold mb-4 flex items-center gap-2 text-gray-900 dark:text-gray-100">
-              <BookOpen className="w-6 h-6 text-indigo-600" /> Available Jobs
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {assessments.eligible_assessments?.map((assessment) => (
-                <div
-                  key={assessment.job_id}
-                  className="bg-white dark:bg-gray-800 p-6 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition transform hover:-translate-y-1"
-                >
-                  <img
-                    src={`http://localhost:5000/static/uploads/${assessment.company_image}`}
-                    alt={'Company Logo'}
-                    className="w-full h-32 object-cover rounded-lg mb-4"
-                  />
-                  <h4 className="text-base font-medium text-gray-900 dark:text-gray-100">
-                    {assessment.job_title}
-                  </h4>
+            {/* Candidate Info */}
+            <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300">
+              <div className="flex items-center mb-6">
+                <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
+                  <User className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    My Profile
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Manage your personal details
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex flex-col gap-3">
                   <p className="text-base text-gray-600 dark:text-gray-400">
-                    Company: {assessment.company}
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Name:
+                    </span>{' '}
+                    {candidate.name}
                   </p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Award className="w-5 h-5 text-indigo-600" />
-                    <span className="text-base text-gray-700 dark:text-gray-300">
-                      {assessment.experience_min}-{assessment.experience_max}{' '}
-                      years
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Email:
+                    </span>{' '}
+                    {candidate.email}
+                  </p>
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Phone:
+                    </span>{' '}
+                    {candidate.phone || 'Not provided'}
+                  </p>
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Location:
+                    </span>{' '}
+                    {candidate.location || 'Not specified'}
+                  </p>
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Experience:
+                    </span>{' '}
+                    {candidate.years_of_experience} years
+                  </p>
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Profile Status:
+                    </span>{' '}
+                    <span
+                      className={`font-semibold ${
+                        candidate.is_profile_complete
+                          ? 'text-green-600 dark:text-green-400'
+                          : 'text-red-500 dark:text-red-400'
+                      }`}
+                    >
+                      {candidate.is_profile_complete
+                        ? 'Complete'
+                        : 'Incomplete'}
                     </span>
-                  </div>
-                  <Button
-                    to={'/candidate/dashboard'}
-                    className="mt-4 w-full px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
-                  >
-                    View Job
-                  </Button>
+                  </p>
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Resume:
+                    </span>{' '}
+                    {candidate.resume ? (
+                      <a
+                        href={`http://localhost:5000/static/uploads/${candidate.resume}`}
+                        className="text-indigo-600 dark:text-indigo-400 hover:underline"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {candidate.resume.split('/').pop()}
+                      </a>
+                    ) : (
+                      'Not provided'
+                    )}
+                  </p>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Attempted Jobs */}
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm">
-            <h3 className="text-xl font-semibold mb-4 flex items-center gap-2 text-gray-900 dark:text-gray-100">
-              <BookOpen className="w-6 h-6 text-indigo-600" /> Attempted Jobs
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {assessments.attempted_assessments?.map((attempt) => (
-                <div
-                  key={attempt.attempt_id}
-                  className="bg-white dark:bg-gray-800 p-5 rounded-xl border border-gray-200 dark:border-gray-700 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-2"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                      {attempt.job_title}
-                    </h4>
-                    <span className="px-3 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
-                      {attempt.status}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                    Company:{' '}
-                    <span className="font-medium">{attempt.company}</span>
+                <div className="flex flex-col gap-3">
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Degree:
+                    </span>{' '}
+                    {candidate.degree || 'Not specified'}
                   </p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                    Attempt Date:{' '}
-                    <span className="font-medium">
-                      {new Date(attempt.attempt_date).toLocaleString('en-IN', {
-                        timeZone: 'Asia/Kolkata',
-                      })}
-                    </span>
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Branch:
+                    </span>{' '}
+                    {candidate.degree_branch || 'Not specified'}
                   </p>
-                  <Link
-                    to={`/candidate/result/${attempt.attempt_id}`}
-                    className="inline-block w-full text-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200"
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Passout Year:
+                    </span>{' '}
+                    {candidate.passout_year || 'Not specified'}
+                  </p>
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      LinkedIn:
+                    </span>{' '}
+                    {candidate.linkedin ? (
+                      <a
+                        href={candidate.linkedin}
+                        className="text-indigo-600 dark:text-indigo-400 hover:underline"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {candidate.linkedin}
+                      </a>
+                    ) : (
+                      'Not provided'
+                    )}
+                  </p>
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      GitHub:
+                    </span>{' '}
+                    {candidate.github ? (
+                      <a
+                        href={candidate.github}
+                        className="text-indigo-600 dark:text-indigo-400 hover:underline"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        {candidate.github}
+                      </a>
+                    ) : (
+                      'Not provided'
+                    )}
+                  </p>
+                  <LinkButton
+                    to="/candidate/complete-profile"
+                    className="w-fit bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
                   >
-                    View Result
-                  </Link>
+                    Edit Profile
+                  </LinkButton>
                 </div>
-              ))}
+              </div>
+              {!candidate.is_profile_complete && (
+                <div className="mt-6">
+                  <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full"
+                      style={{ width: '60%' }}
+                    ></div>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
 
-          {/* Recent Activity */}
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm mt-4">
-            <h3 className="text-xl font-semibold mb-4 flex items-center gap-2 text-gray-900 dark:text-gray-100">
-              <Clock className="w-6 h-6 text-indigo-600" /> Recent Activity
-            </h3>
-            <p className="text-base text-gray-700 dark:text-gray-300">
-              Last login: {new Date().toLocaleString()}
-            </p>
-            <p className="text-base text-gray-700 dark:text-gray-300">
-              Last job attempt:{' '}
-              {assessments.attempted_assessments?.length > 0
-                ? new Date(
-                    assessments.attempted_assessments[0].attempt_date
-                  ).toLocaleString()
-                : 'N/A'}
-            </p>
+            {/* Available Jobs */}
+            <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300">
+              <div className="flex items-center mb-6">
+                <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
+                  <BookOpen className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    Available Jobs
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Explore new job opportunities
+                  </p>
+                </div>
+              </div>
+              {assessments.eligible_assessments?.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {assessments.eligible_assessments.map((assessment) => (
+                    <div
+                      key={assessment.job_id}
+                      className="bg-white/50 dark:bg-gray-700/50 backdrop-blur-sm rounded-2xl shadow-md border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-xl hover:scale-105 transition-all duration-300"
+                    >
+                      {assessment.logo && (
+                        <img
+                          src={`http://localhost:5000/static/uploads/${assessment.logo}`}
+                          alt="Company Logo"
+                          className="w-full h-32 object-contain rounded-lg mb-4"
+                        />
+                      )}
+                      <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                        {assessment.job_title}
+                      </h4>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                        Company: {assessment.company}
+                      </p>
+                      <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
+                        <div className="flex items-center gap-2">
+                          <Award className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                          <span>
+                            {assessment.experience_min}-
+                            {assessment.experience_max} years
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                          <span>
+                            {format(
+                              new Date(
+                                assessment.schedule_start || assessment.schedule
+                              ),
+                              'MMM d, yyyy'
+                            )}
+                            {' - '}
+                            {format(
+                              new Date(
+                                assessment.schedule_end || assessment.schedule
+                              ),
+                              'MMM d, yyyy'
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        to={`/candidate/dashboard/${assessment.job_id}`}
+                        className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
+                      >
+                        View Job
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-base text-gray-600 dark:text-gray-400 text-center">
+                  No available jobs at the moment.
+                </p>
+              )}
+            </div>
+
+            {/* attempted_assessments Jobs */}
+            <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300">
+              <div className="flex items-center mb-6">
+                <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
+                  <Award className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    attempted_assessments Jobs
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Review your job applications
+                  </p>
+                </div>
+              </div>
+              {assessments.attempted_assessments?.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {assessments.attempted_assessments.map((attempt) => (
+                    <div
+                      key={attempt.attempt_id}
+                      className="bg-white/50 dark:bg-gray-700/50 backdrop-blur-sm rounded-2xl shadow-md border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-xl hover:scale-105 transition-all duration-300"
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                          {attempt.job_title}
+                        </h4>
+                        <span className="px-3 py-1 bg-gradient-to-r from-green-400 to-emerald-600 text-white text-xs font-medium rounded-full">
+                          {attempt.status}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                        Company:{' '}
+                        <span className="font-medium">{attempt.company}</span>
+                      </p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                        Attempt Date:{' '}
+                        <span className="font-medium">
+                          {format(
+                            new Date(attempt.attempt_date),
+                            'MMM d, yyyy, h:mm a'
+                          )}
+                        </span>
+                      </p>
+                      <LinkButton
+                        to={`/candidate/assessment/${attempt.attempt_id}/results`}
+                        className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
+                      >
+                        View Result
+                      </LinkButton>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-base text-gray-600 dark:text-gray-400 text-center">
+                  No attempted_assessments jobs yet.
+                </p>
+              )}
+            </div>
+
+            {/* Recent Activity */}
+            <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 hover:shadow-2xl transition-all duration-300">
+              <div className="flex items-center mb-6">
+                <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
+                  <Clock className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    Recent Activity
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Track your latest actions
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3">
+                <p className="text-base text-gray-600 dark:text-gray-400">
+                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                    Last login:
+                  </span>{' '}
+                  {format(new Date(), 'MMM d, yyyy, h:mm a')}
+                </p>
+                <p className="text-base text-gray-600 dark:text-gray-400">
+                  <span className="font-medium text-gray-900 dark:text-gray-100">
+                    Last job attempt:
+                  </span>{' '}
+                  {assessments.attempted_assessments?.length > 0
+                    ? format(
+                        new Date(
+                          assessments.attempted_assessments[0].attempt_date
+                        ),
+                        'MMM d, yyyy, h:mm a'
+                      )
+                    : 'N/A'}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 
         {/* Right Sidebar */}
-        <div className="w-96 p-6 space-y-8 bg-white dark:bg-gray-900 shadow-sm dark:border-l dark:border-gray-800">
-          <div className="text-center">
+        <div className="w-full lg:w-96 p-6 bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg shadow-sm border-l border-gray-200/50 dark:border-gray-700/50 lg:sticky lg:top-20">
+          <div className="text-center space-y-4">
             <img
-              className="w-24 h-24 rounded-full mx-auto mb-4 object-cover border-4 border-indigo-600"
-              src={`http://localhost:5000/static/uploads/${candidate.profile_picture}`}
+              className="w-24 h-24 rounded-full mx-auto object-cover border-4 border-indigo-600 dark:border-indigo-400"
+              src={
+                candidate.profile_picture
+                  ? `http://localhost:5000/static/uploads/${candidate.profile_picture}`
+                  : 'https://via.placeholder.com/96'
+              }
               alt="Profile"
             />
             <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
               {candidate.name}
             </h3>
-            <p className="text-base text-gray-500 dark:text-gray-400">
-              Good Afternoon {candidate.name} 🔥
+            <p className="text-base text-gray-600 dark:text-gray-400">
+              Good Afternoon, {candidate.name.split(' ')[0]} 🔥
             </p>
-            <p className="text-base text-indigo-600 mt-2 flex items-center gap-2 justify-center">
+            <p className="text-base text-indigo-600 dark:text-indigo-400 flex items-center gap-2 justify-center">
               {candidate.is_profile_complete && (
                 <Verified className="w-5 h-5" />
               )}
@@ -387,33 +574,38 @@ const CandidateOverview = () => {
                 : 'Complete profile for better results'}
             </p>
             <div>
-              <h4 className="text-lg font-medium text-gray-900 dark:text-gray-100">
+              <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 Skills
               </h4>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {candidate.skills.map(({ skill_name }, i) => (
-                  <span
-                    key={skill_name}
-                    className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      skillColor[i] || 'bg-gray-200 text-gray-800'
-                    }`}
-                  >
-                    {skill_name}
-                  </span>
-                ))}
+              <div className="flex flex-wrap gap-2 mt-2 justify-center">
+                {candidate.skills?.length > 0 ? (
+                  candidate.skills.map(({ skill_name }, i) => (
+                    <span
+                      key={skill_name}
+                      className={`px-3 py-1 rounded-full text-sm font-medium ${getSkillColor(
+                        i
+                      )}`}
+                    >
+                      {skill_name}
+                    </span>
+                  ))
+                ) : (
+                  <p className="text-base text-gray-600 dark:text-gray-400">
+                    No skills added yet.
+                  </p>
+                )}
               </div>
             </div>
-
             <Button
-              className={'w-full mt-4'}
-              to={'/candidate/complete-profile'}
+              to="/candidate/complete-profile"
+              className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
             >
               Tailor Profile
             </Button>
           </div>
         </div>
       </div>
-    </>
+    </div>
   )
 }
 

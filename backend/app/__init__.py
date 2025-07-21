@@ -1,19 +1,83 @@
 import os
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from flask_mail import Mail
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+import logging
+from functools import wraps
+import razorpay
 
 # from flask_migrate import Migrate
 
 db = SQLAlchemy()
 mail = Mail()
 limiter = Limiter(key_func=get_remote_address)
+razorpay_client = razorpay.Client(auth=(os.getenv('RAZORPAY_KEY_ID'), os.getenv('RAZORPAY_KEY_SECRET')))
 
-# migrate = Migrate()
+# Configure logging
+logging.basicConfig(level=logging.ERROR)
+logger = logging.getLogger(__name__)
+
+class ErrorHandler:
+    def __init__(self, app):
+        self.app = app
+        self._register_handlers()
+
+    def _register_handlers(self):
+        # Global error handler for all exceptions
+        @self.app.errorhandler(Exception)
+        def handle_exception(e):
+            # Log the error
+            logger.error(f"Unhandled exception: {str(e)}", exc_info=True)
+
+            # Prepare error response
+            response = {
+                "error": True,
+                "message": str(e) if not hasattr(e, 'message') else e.message,
+                "status_code": 500 if not hasattr(e, 'code') else e.code,
+                "path": request.path,
+                "method": request.method
+            }
+
+            # Customize response based on exception type if needed
+            if hasattr(e, 'description'):
+                response["description"] = e.description
+
+            # Return JSON response with status code
+            return jsonify(response), response["status_code"]
+
+        # Before request hook to set up error context
+        @self.app.before_request
+        def before_request():
+            # Add middleware-like logic here if needed (e.g., authentication checks)
+            pass
+
+        # After request hook to finalize response
+        @self.app.after_request
+        def after_request(response):
+            # Ensure response is JSON if an error occurred
+            if response.status_code >= 400:
+                response.headers['Content-Type'] = 'application/json'
+            return response
+
+    def register_custom_handler(self, error_class, handler):
+        """Register a custom handler for a specific exception."""
+        @self.app.errorhandler(error_class)
+        def custom_error_handler(e):
+            logger.error(f"Custom handled exception ({error_class.__name__}): {str(e)}", exc_info=True)
+            return handler(e)
+
+# Example custom error handler function
+def handle_validation_error(e):
+    return jsonify({
+        "error": True,
+        "message": "Validation failed",
+        "status_code": 400,
+        "details": getattr(e, 'messages', "Invalid input")
+    }), 400
 
 def create_app():
     load_dotenv()
@@ -28,6 +92,12 @@ def create_app():
     mail.init_app(app)
     limiter.init_app(app)
     
+    # Initialize error handler
+    error_handler = ErrorHandler(app)
+
+    # Register a custom handler for a specific exception (e.g., ValueError)
+    error_handler.register_custom_handler(ValueError, handle_validation_error)
+
     # Import models
     from app.models.candidate import Candidate
     from app.models.job import JobDescription
@@ -37,6 +107,8 @@ def create_app():
     from app.models.candidate_skill import CandidateSkill
     from app.models.required_skill import RequiredSkill
     from app.models.assessment_registration import AssessmentRegistration
+    from app.models.subscription_plan import SubscriptionPlan
+    from app.models.superadmin import Superadmin
     
     # Import and register blueprints
     from app.routes.candidate import candidate_api_bp
@@ -44,47 +116,19 @@ def create_app():
     from app.routes.recruiter import recruiter_api_bp
     from app.routes.auth import auth_bp
     from app.routes.recruiter_analytics import recruiter_analytics_api_bp
+    from app.routes.subscription import subscriptions_bp
+    from app.routes.admin import admin_api_bp
     
     app.register_blueprint(recruiter_analytics_api_bp, url_prefix='/api/recruiter/analytics')
     app.register_blueprint(candidate_api_bp)
     app.register_blueprint(assessment_api_bp)
     app.register_blueprint(recruiter_api_bp)
+    app.register_blueprint(subscriptions_bp)
+    app.register_blueprint(admin_api_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     
     return app
 
-# from flask import Flask
-# from flask_sqlalchemy import SQLAlchemy
-# from flask_cors import CORS
-# from dotenv import load_dotenv
-# import os
-
-# db = SQLAlchemy()
-
-# def create_app():
-#     load_dotenv()
-#     app = Flask(__name__)
-#     app.config.from_object('app.config.Config')
-#     app.secret_key = os.getenv("SECRET_KEY", "dev-secret-key")
-
-#     # Enable CORS
-#     CORS(app, resources={r"/api/*": {"origins": "http://localhost:5173"}})
-
-#     db.init_app(app)
-
-#     # Import models
-#     from app.models.user import User
-#     from app.models.job import JobDescription, RequiredSkill
-#     from app.models.skill import Skill
-#     from app.models.mcq import MCQ
-
-#     # Register blueprints
-#     from app.routes.auth import auth_bp
-#     from app.routes.recruiter import recruiter_bp
-#     from app.routes.candidate import candidate_api_bp
-
-#     app.register_blueprint(candidate_api_bp)
-#     app.register_blueprint(auth_bp, url_prefix='/api/auth')
-#     app.register_blueprint(recruiter_bp, url_prefix='/api/recruiter')
-
-#     return app
+if __name__ == '__main__':
+    app = create_app()
+    app.run(debug=True, host='0.0.0.0', port=5000)

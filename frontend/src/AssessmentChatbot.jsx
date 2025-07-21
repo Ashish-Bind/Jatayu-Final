@@ -17,6 +17,7 @@ import {
   requestFullscreen,
   parseContent,
   renderContent,
+  baseUrl,
 } from './utils/utils'
 import {
   BookOpen,
@@ -140,14 +141,11 @@ const AssessmentChatbot = () => {
       streamRef.current = stream
       if (videoRef.current) videoRef.current.srcObject = stream
 
-      const response = await fetch(
-        `http://localhost:5000/api/assessment/start/${attemptId}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-        }
-      )
+      const response = await fetch(`${baseUrl}/assessment/start/${attemptId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      })
       if (!response.ok)
         throw new Error(
           (await response.json()).error || `HTTP error ${response.status}`
@@ -250,7 +248,7 @@ const AssessmentChatbot = () => {
             () => navigate(`/candidate/assessment/${attemptId}/results`)
           )
         } else {
-          toast.warning(`Tab switch detected (${newCount}/${MAX_TAB_SWITCHES})`)
+          toast.error(`Tab switch detected (${newCount}/${MAX_TAB_SWITCHES})`)
         }
         return newCount
       })
@@ -319,7 +317,13 @@ const AssessmentChatbot = () => {
         setUsedMcqIds,
         usedMcqIds,
         questionNumber,
-        setIsGeneratingQuestion
+        setIsGeneratingQuestion,
+        {
+          tabSwitches: tabSwitchesRef.current,
+          fullscreenWarnings: fullscreenWarningsRef.current,
+          forced: false,
+          remark: 'None',
+        }
       )
     }
   }, [
@@ -355,7 +359,13 @@ const AssessmentChatbot = () => {
           setUsedMcqIds,
           usedMcqIds,
           questionNumber,
-          setIsGeneratingQuestion
+          setIsGeneratingQuestion,
+          {
+            tabSwitches: tabSwitchesRef.current,
+            fullscreenWarnings: fullscreenWarningsRef.current,
+            forced: false,
+            remark: 'None',
+          }
         )
         setAwaitingNextQuestion(false)
       }, 1500)

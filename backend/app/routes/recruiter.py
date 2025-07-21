@@ -85,7 +85,7 @@ def get_assessments():
             'passout_year_required': job.passout_year_required,
             'custom_prompt': job.custom_prompt,
             'job_description': job.job_description,
-            'company_image':recruiter.company_image,
+            'logo':recruiter.logo,
             'skills': [
                 {'name': rs.skill.name, 'priority': rs.priority}
                 for rs in job.required_skills

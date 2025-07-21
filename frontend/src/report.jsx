@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Bar } from 'react-chartjs-2';
+import React, { useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { Bar } from 'react-chartjs-2'
 import {
   CheckCircle,
   BarChart2,
@@ -9,60 +9,69 @@ import {
   TrendingUp,
   Download,
   Home,
-} from 'lucide-react';
-import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
-import Navbar from './components/Navbar';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+} from 'lucide-react'
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js'
+import Navbar from './components/Navbar'
+import jsPDF from 'jspdf'
+import html2canvas from 'html2canvas'
+import { baseUrl } from './utils/utils'
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
 const Report = () => {
-  const { attemptId } = useParams();
-  const navigate = useNavigate();
-  const [report, setReport] = useState(null);
-  const [errorMessage, setErrorMessage] = useState('');
+  const { attemptId } = useParams()
+  const navigate = useNavigate()
+  const [report, setReport] = useState(null)
+  const [errorMessage, setErrorMessage] = useState('')
 
   useEffect(() => {
-    const userId = new URLSearchParams(window.location.search).get('user_id');
-    fetch(`http://localhost:5000/api/candidate/report/${attemptId}?user_id=${userId}`, {
+    const userId = new URLSearchParams(window.location.search).get('user_id')
+    fetch(`${baseUrl}/candidate/report/${attemptId}?user_id=${userId}`, {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
     })
       .then((response) => {
         if (!response.ok) {
-          throw new Error(`HTTP error ${response.status}`);
+          throw new Error(`HTTP error ${response.status}`)
         }
-        return response.json();
+        return response.json()
       })
       .then((data) => setReport(data))
       .catch((error) => {
-        console.error('Error fetching report:', error);
-        setErrorMessage(`Failed to load report: ${error.message}`);
-      });
-  }, [attemptId]);
+        console.error('Error fetching report:', error)
+        setErrorMessage(`Failed to load report: ${error.message}`)
+      })
+  }, [attemptId])
 
   const downloadReport = () => {
-    const input = document.getElementById('report-section');
-    if (!input) return;
+    const input = document.getElementById('report-section')
+    if (!input) return
 
     html2canvas(input).then((canvas) => {
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF();
-      const imgProps = pdf.getImageProperties(imgData);
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`Assessment_Report_${attemptId}.pdf`);
-    });
-  };
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF()
+      const imgProps = pdf.getImageProperties(imgData)
+      const pdfWidth = pdf.internal.pageSize.getWidth()
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
+      pdf.save(`Assessment_Report_${attemptId}.pdf`)
+    })
+  }
 
   if (errorMessage) {
     return (
       <div className="min-h-screen bg-gray-100 flex justify-center items-center">
         <div className="text-red-700 text-lg">{errorMessage}</div>
       </div>
-    );
+    )
   }
 
   if (!report) {
@@ -70,34 +79,38 @@ const Report = () => {
       <div className="min-h-screen bg-gray-100 flex justify-center items-center">
         <div className="text-gray-700 text-lg">Loading...</div>
       </div>
-    );
+    )
   }
 
-  const { candidate_report, total_questions, job_title, company } = report;
+  const { candidate_report, total_questions, job_title, company } = report
   const totalAttempted = Object.values(candidate_report).reduce(
     (sum, stats) => sum + stats.questions_attempted,
     0
-  );
+  )
   const totalCorrect = Object.values(candidate_report).reduce(
     (sum, stats) => sum + stats.correct_answers,
     0
-  );
+  )
   const overallAccuracy =
-    totalAttempted > 0 ? ((totalCorrect / totalAttempted) * 100).toFixed(2) : 0;
+    totalAttempted > 0 ? ((totalCorrect / totalAttempted) * 100).toFixed(2) : 0
 
   const chartData = {
-    labels: Object.keys(candidate_report).map((skill) => skill.replace('_', ' ')),
+    labels: Object.keys(candidate_report).map((skill) =>
+      skill.replace('_', ' ')
+    ),
     datasets: [
       {
         label: 'Accuracy (%)',
-        data: Object.values(candidate_report).map((stats) => stats.accuracy_percent),
+        data: Object.values(candidate_report).map(
+          (stats) => stats.accuracy_percent
+        ),
         backgroundColor: 'rgba(79, 70, 229, 0.6)',
         borderColor: 'rgba(79, 70, 229, 1)',
         borderWidth: 1,
         hoverBackgroundColor: 'rgba(79, 70, 229, 0.8)',
       },
     ],
-  };
+  }
 
   const chartOptions = {
     responsive: true,
@@ -124,7 +137,7 @@ const Report = () => {
       },
     },
     animation: { duration: 1000, easing: 'easeInOutQuad' },
-  };
+  }
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
@@ -134,7 +147,10 @@ const Report = () => {
           <CheckCircle className="w-5 h-5 text-indigo-600" />
           Assessment Report
         </h1>
-        <div className="bg-white p-6 sm:p-8 rounded-lg shadow-sm border border-gray-200 mb-8" id="report-section">
+        <div
+          className="bg-white p-6 sm:p-8 rounded-lg shadow-sm border border-gray-200 mb-8"
+          id="report-section"
+        >
           <p className="text-green-700 text-sm font-medium mb-6 flex items-center gap-2">
             <Star className="w-4 h-4 text-indigo-600" />
             Report for {job_title} at {company}
@@ -286,7 +302,7 @@ const Report = () => {
         </div>
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default Report;
+export default Report

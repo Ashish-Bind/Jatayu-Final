@@ -4,6 +4,7 @@ from app.models.user import User, PasswordResetToken
 from app.models.candidate import Candidate
 from app.models.recruiter import Recruiter
 from app.models.login_log import LoginLog
+from app.models.superadmin import Superadmin
 from app.config import Config
 from flask_mail import Message
 from datetime import datetime, timedelta
@@ -54,28 +55,28 @@ def signup():
     db.session.add(user)
     db.session.commit()
 
-    # Generate confirmation token
-    token = secrets.token_urlsafe(32)
-    confirmation_url = f'http://localhost:5173/candidate/confirm?token={token}'
-    confirmation_token = PasswordResetToken(
-        user_id=user.id,
-        token=token,
-        created_at=datetime.utcnow(),
-        expires_at=datetime.utcnow() + timedelta(hours=24)
-    )
-    db.session.add(confirmation_token)
-    db.session.commit()
-
-    msg = Message(
-        subject='Confirm Your Account',
-        sender=os.getenv('MAIL_DEFAULT_SENDER'),
-        recipients=[data['email']],
-        body=f'Click this link to confirm your account: {confirmation_url}\nThis link expires in 24 hours.'
-    )
-    mail.send(msg)
 
     # Add user to Candidate or Recruiter table
     if role == 'candidate':
+        # Generate confirmation token
+        token = secrets.token_urlsafe(32)
+        confirmation_url = f'http://localhost:5173/candidate/confirm?token={token}'
+        confirmation_token = PasswordResetToken(
+            user_id=user.id,
+            token=token,
+            created_at=datetime.utcnow(),
+            expires_at=datetime.utcnow() + timedelta(hours=24)
+        )
+        db.session.add(confirmation_token)
+        db.session.commit()
+
+        msg = Message(
+            subject='Confirm Your Account',
+            sender=os.getenv('MAIL_DEFAULT_SENDER'),
+            recipients=[data['email']],
+            body=f'Click this link to confirm your account: {confirmation_url}\nThis link expires in 24 hours.'
+        )
+        mail.send(msg)
         candidate = Candidate(
             user_id=user.id,
             name=user.name,
@@ -87,7 +88,8 @@ def signup():
         recruiter = Recruiter(
             user_id=user.id,
             phone=data.get('phone', ''),
-            company=data.get('company', '')
+            company=data.get('company', ''),
+            status='Pending'
         )
         db.session.add(recruiter)
 
@@ -190,12 +192,27 @@ def login():
 def check_auth():
     if 'user_id' not in session or 'role' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
+        
+    role = session['role']
+    
+    if role == 'superadmin':
+        superadmin = Superadmin.query.get(session['user_id'])
+        if not superadmin:
+            return jsonify({'error': 'Superadmin not found'}), 404
+        
+        if superadmin:
+            return jsonify({
+                'user': {
+                    'id': superadmin.id,
+                    'email': superadmin.email,
+                    'role': 'superadmin'
+                }
+            }), 200
 
     user = User.query.get(session['user_id'])
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
-    role = session['role']
     enforce_face_verification = session.get('enforce_face_verification', False)
 
     response = {
@@ -222,7 +239,7 @@ def check_auth():
 
     elif role == 'recruiter':
         recruiter = Recruiter.query.filter_by(user_id=user.id).first()
-        response['user']['profile_img'] = recruiter.company_image if recruiter else ''
+        response['user']['profile_img'] = recruiter.logo if recruiter else ''
         if recruiter:
             response['user'].update({
                 'recruiter_id': recruiter.recruiter_id,

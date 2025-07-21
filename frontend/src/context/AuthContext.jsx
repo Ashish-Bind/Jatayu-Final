@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react'
+import { baseUrl } from '../utils/utils'
 
 const AuthContext = createContext()
 
@@ -9,7 +10,7 @@ export const AuthProvider = ({ children }) => {
 
   const checkAuth = async (signal) => {
     try {
-      const response = await fetch('http://localhost:5000/api/auth/check', {
+      const response = await fetch(`${baseUrl}/auth/check`, {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         signal,
@@ -116,7 +117,7 @@ export const AuthProvider = ({ children }) => {
       const location = await getLocation()
       console.log('Sending location data to backend:', location)
 
-      const response = await fetch(`http://localhost:5000/api/auth/login`, {
+      const response = await fetch(`${baseUrl}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -134,17 +135,36 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
+  const superadminlogin = async (email, password, role) => {
+    try {
+      const response = await fetch(`${baseUrl}/superadmin/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password, role }),
+      })
+
+      if (response.ok) {
+        // Fetch the latest user data from /check to ensure profile_img is included
+        await checkAuth()
+        return true
+      }
+      const data = await response.json()
+      setUser(data.user)
+      throw new Error(data?.error || 'Login failed')
+    } catch (error) {
+      throw new Error(error.message)
+    }
+  }
+
   const recruiterLogin = async (email, password) => {
     try {
-      const response = await fetch(
-        `http://localhost:5000/api/recruiter/login`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ email, password }),
-        }
-      )
+      const response = await fetch(`${baseUrl}/recruiter/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password }),
+      })
 
       if (response.ok) {
         await checkAuth()
@@ -159,15 +179,12 @@ export const AuthProvider = ({ children }) => {
 
   const requestPasswordReset = async (email) => {
     try {
-      const response = await fetch(
-        'http://localhost:5000/api/auth/forgot-password',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ email }),
-        }
-      )
+      const response = await fetch(`${baseUrl}/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email }),
+      })
       if (!response.ok) {
         const data = await response.json()
         throw new Error(data.error || 'Failed to request password reset')
@@ -178,15 +195,12 @@ export const AuthProvider = ({ children }) => {
   }
 
   const resetPassword = async (token, password) => {
-    const response = await fetch(
-      'http://localhost:5000/api/auth/reset-password',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ token, password }),
-      }
-    )
+    const response = await fetch(`${baseUrl}/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ token, password }),
+    })
 
     if (!response.ok) {
       const data = await response.json()
@@ -198,7 +212,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      await fetch('http://localhost:5000/api/auth/logout', {
+      await fetch(`${baseUrl}/auth/logout`, {
         credentials: 'include',
         method: 'POST',
       })
@@ -218,6 +232,7 @@ export const AuthProvider = ({ children }) => {
     resetPassword,
     locationError,
     recruiterLogin,
+    superadminlogin,
   }
 
   return (
