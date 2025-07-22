@@ -5,6 +5,7 @@ from app.models.recruiter import Recruiter
 from app.models.candidate import Candidate
 from app.models.assessment_registration import AssessmentRegistration
 from app.models.assessment_attempt import AssessmentAttempt
+from app.models.proctoring_violation import ProctoringViolation
 from flask_mail import Message
 
 recruiter_analytics_api_bp = Blueprint('recruiter_analytics_api', __name__, url_prefix='/api/recruiter/analytics')
@@ -111,7 +112,7 @@ def block_candidate(candidate_id):
 
 @recruiter_analytics_api_bp.route('/candidate/<int:candidate_id>/proctoring', methods=['GET'])
 def get_proctoring_data(candidate_id):
-    """Retrieve proctoring data for a candidate's assessment attempts."""
+    """Retrieve proctoring data for a candidate's assessment attempts, including violations."""
     if 'user_id' not in session or session.get('role') != 'recruiter':
         return jsonify({'error': 'Unauthorized'}), 401
 
@@ -120,13 +121,28 @@ def get_proctoring_data(candidate_id):
         return jsonify({'error': 'Recruiter not found'}), 404
 
     candidate = Candidate.query.get_or_404(candidate_id)
+
+    # Only get attempts linked to jobs owned by this recruiter
     attempts = AssessmentAttempt.query.join(JobDescription, AssessmentAttempt.job_id == JobDescription.job_id)\
-        .filter(AssessmentAttempt.candidate_id == candidate_id, JobDescription.recruiter_id == recruiter.recruiter_id).all()
+        .filter(AssessmentAttempt.candidate_id == candidate_id,
+                JobDescription.recruiter_id == recruiter.recruiter_id).all()
     
     proctoring_data = []
     for attempt in attempts:
         proctoring = attempt.performance_log.get('proctoring_data', {}) if attempt.performance_log else {}
-        if proctoring:
+
+        # Fetch violations for this attempt
+        violations = ProctoringViolation.query.filter_by(attempt_id=attempt.attempt_id).all()
+        violations_list = [
+            {
+                'violation_id': v.violation_id,
+                'snapshot_path': v.snapshot_path,
+                'violation_type': v.violation_type,
+                'timestamp': v.timestamp.isoformat()
+            } for v in violations
+        ]
+
+        if proctoring or violations_list:
             proctoring_data.append({
                 'attempt_id': attempt.attempt_id,
                 'job_title': JobDescription.query.get(attempt.job_id).job_title,
@@ -135,14 +151,16 @@ def get_proctoring_data(candidate_id):
                 'fullscreen_warnings': proctoring.get('fullscreen_warnings', 0),
                 'remarks': proctoring.get('remarks', []),
                 'forced_termination': proctoring.get('forced_termination', False),
-                'termination_reason': proctoring.get('termination_reason', '')
+                'termination_reason': proctoring.get('termination_reason', ''),
+                'violations': violations_list
             })
-    
+
     return jsonify({
         'candidate_id': candidate.candidate_id,
         'name': candidate.name,
         'proctoring_data': proctoring_data
     }), 200
+
 
 @recruiter_analytics_api_bp.route('/jobs', methods=['GET'])
 def get_jobs():

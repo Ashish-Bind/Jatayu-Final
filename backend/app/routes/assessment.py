@@ -16,6 +16,7 @@ from app.models.candidate_skill import CandidateSkill
 from app.models.mcq import MCQ
 from app.models.assessment_registration import AssessmentRegistration
 from app.models.assessment_state import AssessmentState
+from app.models.proctoring_violation import ProctoringViolation
 from app.services.question_batches import generate_single_question
 from deepface import DeepFace
 import timeout_decorator
@@ -326,6 +327,66 @@ def capture_snapshot(attempt_id):
         return jsonify({'message': 'Snapshot captured successfully'}), 200
     except Exception as e:
         logger.error(f"Error in capture_snapshot for attempt_id={attempt_id}: {str(e)}")
+        return jsonify({'error': f'Internal server error: {str(e)}'}), 500
+
+@assessment_api_bp.route('/store-violation/<int:attempt_id>', methods=['POST'])
+def store_violation(attempt_id):
+    """Store a proctoring violation with snapshot in the database."""
+    try:
+        # Validate assessment attempt
+        attempt = AssessmentAttempt.query.get(attempt_id)
+        if not attempt:
+            logger.error(f"AssessmentAttempt not found for attempt_id={attempt_id}")
+            return jsonify({'error': 'Assessment attempt not found'}), 404
+
+        if attempt.status != 'started':
+            logger.error(f"Assessment not in progress for attempt_id={attempt_id}")
+            return jsonify({'error': 'Assessment not in progress'}), 400
+
+        # Validate request data
+        if 'snapshot' not in request.files or 'violation_type' not in request.form:
+            logger.error(f"Missing snapshot or violation_type for attempt_id={attempt_id}")
+            return jsonify({'error': 'Missing snapshot or violation type'}), 400
+
+        snapshot_file = request.files['snapshot']
+        violation_type = request.form['violation_type'].lower()
+        
+        # Validate violation type
+        valid_violation_types = ['no_face', 'multiple_faces', 'mobile_phone']
+        if violation_type not in valid_violation_types:
+            logger.error(f"Invalid violation type {violation_type} for attempt_id={attempt_id}")
+            return jsonify({'error': 'Invalid violation type'}), 400
+
+        if not snapshot_file.filename:
+            logger.error(f"Invalid snapshot file for attempt_id={attempt_id}")
+            return jsonify({'error': 'Invalid snapshot file'}), 400
+
+        # Save snapshot
+        timestamp = datetime.utcnow().strftime('%Y%m%dT%H%M%S')
+        snapshot_filename = f"violation_attempt{attempt_id}_{timestamp}.jpg"
+        snapshot_path = os.path.join(SNAPSHOT_DIR, snapshot_filename)
+        snapshot_file.save(snapshot_path)
+
+        # Store violation in database
+        violation = ProctoringViolation(
+            attempt_id=attempt_id,
+            snapshot_path=f'snapshots/{snapshot_filename}',
+            violation_type=violation_type,
+            timestamp=datetime.utcnow()
+        )
+        db.session.add(violation)
+        db.session.commit()
+
+        logger.info(f"Violation stored for attempt_id={attempt_id}: {violation_type}")
+        return jsonify({
+            'message': 'Violation stored successfully',
+            'violation_id': violation.violation_id,
+            'snapshot_path': violation.snapshot_path
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error storing violation for attempt_id={attempt_id}: {str(e)}")
         return jsonify({'error': f'Internal server error: {str(e)}'}), 500
 
 @assessment_api_bp.route('/next-question/<int:attempt_id>', methods=['POST'])
