@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from './context/AuthContext'
 import {
   Users,
@@ -31,8 +32,8 @@ const Analytics = () => {
   const [message, setMessage] = useState('')
   const [filterJobId, setFilterJobId] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
-  const chartRef = React.useRef(null)
-  const chartInstanceRef = React.useRef(null)
+  const chartRef = useRef(null)
+  const chartInstanceRef = useRef(null)
 
   useEffect(() => {
     if (!user || user.role !== 'recruiter') {
@@ -40,72 +41,167 @@ const Analytics = () => {
       return
     }
 
-    // Fetch candidates
-    fetch(
-      `${baseUrl}/recruiter/analytics/candidates${
-        filterJobId ? `?job_id=${filterJobId}` : ''
-      }${filterStatus ? `&status=${filterStatus}` : ''}`,
-      {
-        credentials: 'include',
-      }
-    )
-      .then((response) => {
-        if (!response.ok) throw new Error('Failed to fetch candidates')
-        return response.json()
-      })
-      .then((data) => {
-        setCandidates(data)
-        updateChart(data)
-      })
-      .catch((err) => setError('Error fetching candidates: ' + err.message))
+    const fetchData = async () => {
+      setIsLoading(true)
+      try {
+        const [candidatesResponse, jobsResponse] = await Promise.all([
+          fetch(
+            `${baseUrl}/recruiter/analytics/candidates${
+              filterJobId ? `?job_id=${filterJobId}` : ''
+            }${filterStatus ? `&status=${filterStatus}` : ''}`,
+            { credentials: 'include' }
+          ),
+          fetch(`${baseUrl}/recruiter/analytics/jobs`, {
+            credentials: 'include',
+          }),
+        ])
 
-    // Fetch jobs
-    fetch(`${baseUrl}/recruiter/analytics/jobs`, {
-      credentials: 'include',
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error('Failed to fetch jobs')
-        return response.json()
-      })
-      .then((data) => setJobs(data))
-      .catch((err) => setError('Error fetching jobs: ' + err.message))
+        if (!candidatesResponse.ok)
+          throw new Error('Failed to fetch candidates')
+        if (!jobsResponse.ok) throw new Error('Failed to fetch jobs')
+
+        const candidatesData = await candidatesResponse.json()
+        const jobsData = await jobsResponse.json()
+
+        setCandidates(candidatesData)
+        setJobs(jobsData)
+      } catch (err) {
+        setError('Error fetching data: ' + err.message)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchData()
   }, [user, navigate, filterJobId, filterStatus])
 
   useEffect(() => {
+    if (candidates.length > 0 && chartRef.current) {
+      const ctx = chartRef.current.getContext('2d')
+      if (chartInstanceRef.current) {
+        chartInstanceRef.current.destroy()
+      }
+      chartInstanceRef.current = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: candidates.map((c) => c.name),
+          datasets: [
+            {
+              label: 'Assessment Score',
+              data: candidates.map((c) => c.total_score || 0),
+              backgroundColor: 'rgba(16, 185, 129, 0.8)',
+              borderColor: 'rgb(16, 185, 129)',
+              borderWidth: 2,
+              borderRadius: 8,
+              borderSkipped: false,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'top',
+              labels: {
+                usePointStyle: true,
+                padding: 20,
+                font: {
+                  size: 14,
+                  family: "'Inter', 'system-ui', sans-serif",
+                  weight: '500',
+                },
+              },
+            },
+            title: {
+              display: true,
+              text: 'Candidate Performance Scores',
+              font: {
+                size: 18,
+                family: "'Inter', 'system-ui', sans-serif",
+                weight: '600',
+              },
+              padding: {
+                top: 10,
+                bottom: 30,
+              },
+            },
+            tooltip: {
+              backgroundColor: 'rgba(17, 24, 39, 0.95)',
+              titleColor: '#F3F4F6',
+              bodyColor: '#F3F4F6',
+              borderColor: 'rgba(107, 114, 128, 0.2)',
+              borderWidth: 1,
+              cornerRadius: 12,
+              padding: 12,
+              displayColors: true,
+              callbacks: {
+                label: function (context) {
+                  return `${context.dataset.label}: ${context.parsed.y}%`
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: {
+                display: false,
+              },
+              ticks: {
+                font: {
+                  size: 12,
+                  family: "'Inter', 'system-ui', sans-serif",
+                },
+                color: '#6B7280',
+              },
+            },
+            y: {
+              beginAtZero: true,
+              title: {
+                display: true,
+                text: 'Score (%)',
+                font: {
+                  size: 13,
+                  family: "'Inter', 'system-ui', sans-serif",
+                  weight: '500',
+                },
+                color: '#6B7280',
+              },
+              grid: {
+                color: 'rgba(107, 114, 128, 0.1)',
+                lineWidth: 1,
+              },
+              ticks: {
+                font: {
+                  size: 12,
+                  family: "'Inter', 'system-ui', sans-serif",
+                },
+                color: '#6B7280',
+                callback: function (value) {
+                  return value + '%'
+                },
+              },
+            },
+          },
+          elements: {
+            bar: {
+              borderWidth: 2,
+            },
+          },
+          interaction: {
+            intersect: false,
+            mode: 'index',
+          },
+        },
+      })
+    }
+
     return () => {
       if (chartInstanceRef.current) {
         chartInstanceRef.current.destroy()
       }
     }
-  }, [])
-
-  const updateChart = (candidates) => {
-    if (chartInstanceRef.current) {
-      chartInstanceRef.current.destroy()
-    }
-    const ctx = chartRef.current.getContext('2d')
-    chartInstanceRef.current = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: candidates.map((c) => c.name),
-        datasets: [
-          {
-            label: 'Assessment Score',
-            data: candidates.map((c) => c.total_score || 0),
-            backgroundColor: 'rgba(99, 102, 241, 0.6)',
-            borderColor: 'rgba(99, 102, 241, 1)',
-            borderWidth: 1,
-          },
-        ],
-      },
-      options: {
-        scales: {
-          y: { beginAtZero: true, title: { display: true, text: 'Score (%)' } },
-          x: { title: { display: true, text: 'Candidates' } },
-        },
-      },
-    })
-  }
+  }, [candidates])
 
   const handleBlockCandidate = async (candidateId, reason) => {
     setIsLoading(true)
@@ -220,122 +316,252 @@ const Analytics = () => {
     )
   }
 
-  return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 flex flex-col">
-      <Navbar />
-      <div className="flex-grow py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-6 flex items-center">
-            <BarChart2 className="w-8 h-8 mr-2 text-indigo-600 dark:text-indigo-300" />
-            Recruitment Analytics
-          </h1>
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-gray-900 dark:to-slate-900">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-500 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-900 dark:text-gray-100 text-xl font-medium">
+            Loading analytics data...
+          </p>
+        </div>
+      </div>
+    )
+  }
 
-          {error && (
-            <div className="mb-6 p-3 rounded-md bg-red-50 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300 text-sm">
-              {error}
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-red-50 to-pink-50 dark:from-gray-900 dark:to-red-900">
+        <div className="text-center p-8 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-red-200 dark:border-red-700">
+          <div className="text-red-500 dark:text-red-400 text-6xl mb-4">⚠️</div>
+          <p className="text-red-600 dark:text-red-400 text-xl font-medium">
+            Error: {error}
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-gray-900 dark:via-slate-900 dark:to-indigo-950 flex flex-col font-sans">
+      <Navbar />
+      <div className="flex-grow py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          {/* Header */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8 }}
+            className="text-center mb-12"
+          >
+            <div className="flex items-center justify-center mb-6">
+              <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl shadow-lg">
+                <BarChart2 className="w-12 h-12 text-white" />
+              </div>
             </div>
-          )}
-          {message && (
-            <div className="mb-6 p-3 rounded-md bg-green-50 dark:bg-green-900/30 border-l-4 border-green-500 text-green-700 dark:text-green-300 text-sm">
-              {message}
-            </div>
-          )}
+            <h1 className="text-5xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent mb-4">
+              Recruitment Analytics
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 text-lg max-w-2xl mx-auto">
+              Monitor and manage candidate and job performance
+            </p>
+          </motion.div>
+
+          {/* Messages */}
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3 }}
+                className="mb-8 p-6 bg-gradient-to-br from-red-50 to-pink-50 dark:from-red-900/30 dark:to-pink-900/30 rounded-2xl border border-red-200 dark:border-red-700 shadow-inner flex items-center"
+              >
+                <Ban className="w-6 h-6 text-red-500 dark:text-red-400 mr-3" />
+                <p className="text-red-600 dark:text-red-400 text-sm font-medium">
+                  {error}
+                </p>
+              </motion.div>
+            )}
+            {message && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3 }}
+                className="mb-8 p-6 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-900/30 dark:to-green-900/30 rounded-2xl border border-emerald-200 dark:border-emerald-700 shadow-inner flex items-center"
+              >
+                <FileText className="w-6 h-6 text-emerald-500 dark:text-emerald-400 mr-3" />
+                <p className="text-emerald-600 dark:text-emerald-400 text-sm font-medium">
+                  {message}
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Filters */}
-          <div className="mb-6 flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-                Filter by Job
-              </label>
-              <select
-                value={filterJobId}
-                onChange={(e) => setFilterJobId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-sm"
-              >
-                <option value="">All Jobs</option>
-                {jobs.map((job) => (
-                  <option key={job.job_id} value={job.job_id}>
-                    {job.job_title}
-                  </option>
-                ))}
-              </select>
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.8 }}
+            className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300"
+          >
+            <div className="flex items-center mb-6">
+              <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
+                <Filter className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  Filters
+                </h2>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Refine your analytics view
+                </p>
+              </div>
             </div>
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-                Filter by Status
-              </label>
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-sm"
-              >
-                <option value="">All Statuses</option>
-                <option value="active">Active</option>
-                <option value="blocked">Blocked</option>
-              </select>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="relative">
+                <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <motion.select
+                  value={filterJobId}
+                  onChange={(e) => setFilterJobId(e.target.value)}
+                  className="w-full pl-10 pr-8 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white/80 dark:bg-gray-600/80 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none transition-all duration-200 backdrop-blur-sm appearance-none cursor-pointer"
+                  whileFocus={{ scale: 1.02 }}
+                  transition={{ type: 'spring', stiffness: 300 }}
+                >
+                  <option value="">All Jobs</option>
+                  {jobs.map((job) => (
+                    <option key={job.job_id} value={job.job_id}>
+                      {job.job_title}
+                    </option>
+                  ))}
+                </motion.select>
+              </div>
+              <div className="relative">
+                <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <motion.select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="w-full pl-10 pr-8 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white/80 dark:bg-gray-600/80 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none transition-all duration-200 backdrop-blur-sm appearance-none cursor-pointer"
+                  whileFocus={{ scale: 1.02 }}
+                  transition={{ type: 'spring', stiffness: 300 }}
+                >
+                  <option value="">All Statuses</option>
+                  <option value="active">Active</option>
+                  <option value="blocked">Blocked</option>
+                </motion.select>
+              </div>
             </div>
-          </div>
+          </motion.div>
 
           {/* Performance Chart */}
-          <div className="bg-white dark:bg-gray-900 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800 mb-8">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
-              <BarChart2 className="w-6 h-6 mr-2 text-indigo-600 dark:text-indigo-300" />
-              Candidate Performance
-            </h2>
-            <canvas ref={chartRef} className="max-w-full" />
-          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              delay: 0.4,
+              duration: 0.8,
+              type: 'spring',
+              stiffness: 300,
+              damping: 20,
+            }}
+            className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300"
+          >
+            <div className="flex items-center mb-8">
+              <div className="p-3 bg-gradient-to-r from-indigo-500 to-blue-600 rounded-xl mr-4">
+                <BarChart2 className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  Candidate Performance
+                </h2>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Visualize candidate assessment scores
+                </p>
+              </div>
+            </div>
+            <div className="h-[400px]">
+              <canvas ref={chartRef} className="w-full h-full" />
+            </div>
+          </motion.div>
 
           {/* Candidates Table */}
-          <div className="bg-white dark:bg-gray-900 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800 mb-8">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
-              <Users className="w-6 h-6 mr-2 text-indigo-600 dark:text-indigo-300" />
-              Candidates
-            </h2>
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              delay: 0.6,
+              duration: 0.8,
+              type: 'spring',
+              stiffness: 300,
+              damping: 20,
+            }}
+            className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300"
+          >
+            <div className="flex items-center mb-8">
+              <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
+                <Users className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  Candidates
+                </h2>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Manage and review candidate details
+                </p>
+              </div>
+            </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-800">
+                <thead className="bg-gray-100/80 dark:bg-gray-700/80 backdrop-blur-sm">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Name
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Job
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Score (%)
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Proctoring
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Status
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody className="bg-white/70 dark:bg-gray-800/70 divide-y divide-gray-200 dark:divide-gray-700">
                   {candidates.map((candidate) => (
-                    <tr key={candidate.candidate_id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
+                    <motion.tr
+                      key={candidate.candidate_id}
+                      className="hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-all duration-150"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                         <LinkButton
                           to={`/recruiter/candidate/${candidate.candidate_id}`}
                           variant="link"
-                          className="text-indigo-600 dark:text-indigo-300"
+                          className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 transition-all duration-200"
                         >
                           {candidate.name}
                         </LinkButton>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                         {candidate.job_title || 'N/A'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                         {candidate.total_score
                           ? candidate.total_score.toFixed(2)
                           : 'N/A'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                         <Button
                           variant="link"
                           onClick={() =>
@@ -343,13 +569,13 @@ const Analytics = () => {
                               `/recruiter/candidate/${candidate.candidate_id}/proctoring`
                             )
                           }
-                          className="text-indigo-600 dark:text-indigo-300"
+                          className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 transition-all duration-200 flex items-center"
                         >
-                          <Eye className="w-4 h-4 mr-1" />
+                          <Eye className="w-4 h-4 mr-2" />
                           View
                         </Button>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                         {candidate.status === 'blocked'
                           ? `Blocked: ${
                               candidate.block_reason || 'No reason provided'
@@ -357,99 +583,143 @@ const Analytics = () => {
                           : 'Active'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <input
-                          type="checkbox"
-                          checked={shortlistedCandidates.includes(
-                            candidate.candidate_id
-                          )}
-                          onChange={() =>
-                            handleShortlistCandidate(candidate.candidate_id)
-                          }
-                          className="mr-2"
-                        />
-                        <Button
-                          variant="secondary"
-                          onClick={() => {
-                            const reason = prompt('Enter reason for blocking:')
-                            if (reason)
-                              handleBlockCandidate(
-                                candidate.candidate_id,
-                                reason
-                              )
-                          }}
-                          disabled={candidate.status === 'blocked' || isLoading}
-                          className="mr-2"
-                        >
-                          <Ban className="w-4 h-4 mr-1" />
-                          Block
-                        </Button>
-                        <Button
-                          variant="link"
-                          onClick={() =>
-                            handleDownloadReport(candidate.candidate_id)
-                          }
-                        >
-                          <Download className="w-4 h-4 mr-1" />
-                          Report
-                        </Button>
+                        <div className="flex gap-2">
+                          <input
+                            type="checkbox"
+                            checked={shortlistedCandidates.includes(
+                              candidate.candidate_id
+                            )}
+                            onChange={() =>
+                              handleShortlistCandidate(candidate.candidate_id)
+                            }
+                            className="mr-2 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <motion.div
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            className="inline-block"
+                          >
+                            <Button
+                              variant="primary"
+                              onClick={() => {
+                                const reason = prompt(
+                                  'Enter reason for blocking:'
+                                )
+                                if (reason)
+                                  handleBlockCandidate(
+                                    candidate.candidate_id,
+                                    reason
+                                  )
+                              }}
+                              disabled={
+                                candidate.status === 'blocked' || isLoading
+                              }
+                              className="bg-gradient-to-r from-red-600 to-pink-600 text-white px-4 py-2 rounded-xl hover:from-red-700 hover:to-pink-700 transition-all duration-300 flex items-center shadow-lg hover:shadow-xl"
+                            >
+                              <Ban className="w-4 h-4 mr-2" />
+                              Block
+                            </Button>
+                          </motion.div>
+                          <motion.div
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            className="inline-block"
+                          >
+                            <Button
+                              variant="link"
+                              onClick={() =>
+                                handleDownloadReport(candidate.candidate_id)
+                              }
+                              className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 transition-all duration-200 flex items-center"
+                            >
+                              <Download className="w-4 h-4 mr-2" />
+                              Report
+                            </Button>
+                          </motion.div>
+                        </div>
                       </td>
-                    </tr>
+                    </motion.tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div className="mt-4">
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="mt-8"
+            >
               <Button
                 variant="primary"
                 onClick={handleSendEmails}
                 disabled={shortlistedCandidates.length === 0 || isLoading}
+                className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center"
               >
-                <Send className="w-4 h-4 mr-2" />
+                <Send className="w-5 h-5 mr-2" />
                 Notify Shortlisted
               </Button>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
 
           {/* Jobs Table */}
-          <div className="bg-white dark:bg-gray-900 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
-              <Briefcase className="w-6 h-6 mr-2 text-indigo-600 dark:text-indigo-300" />
-              Job Postings
-            </h2>
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.8, duration: 0.8 }}
+            className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300"
+          >
+            <div className="flex items-center mb-8">
+              <div className="p-3 bg-gradient-to-r from-indigo-500 to-blue-600 rounded-xl mr-4">
+                <Briefcase className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  Job Postings
+                </h2>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Manage and review job listings
+                </p>
+              </div>
+            </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                <thead className="bg-gray-50 dark:bg-gray-800">
+                <thead className="bg-gray-100/80 dark:bg-gray-700/80 backdrop-blur-sm">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Title
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Company
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Created
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Status
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+                <tbody className="bg-white/70 dark:bg-gray-800/70 divide-y divide-gray-200 dark:divide-gray-700">
                   {jobs.map((job) => (
-                    <tr key={job.job_id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
+                    <motion.tr
+                      key={job.job_id}
+                      className="hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-all duration-150"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                         {job.job_title}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                         {job.company}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                         {formatDate(job.created_at)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                         {job.status === 'suspended'
                           ? `Suspended: ${
                               job.suspension_reason || 'No reason provided'
@@ -457,59 +727,91 @@ const Analytics = () => {
                           : 'Active'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <Button
-                          variant="secondary"
-                          onClick={() => {
-                            const reason = prompt(
-                              'Enter reason for suspension:'
-                            )
-                            if (reason) handleSuspendJob(job.job_id, reason)
-                          }}
-                          disabled={job.status === 'suspended' || isLoading}
-                          className="mr-2"
-                        >
-                          <Ban className="w-4 h-4 mr-1" />
-                          Suspend
-                        </Button>
-                        <Button
-                          variant="danger"
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                'Are you sure you want to delete this job?'
-                              )
-                            ) {
-                              handleDeleteJob(job.job_id)
-                            }
-                          }}
-                          disabled={isLoading}
-                        >
-                          <Trash2 className="w-4 h-4 mr-1" />
-                          Delete
-                        </Button>
+                        <div className="flex gap-2">
+                          <motion.div
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            className="inline-block"
+                          >
+                            <Button
+                              variant="primary"
+                              onClick={() => {
+                                const reason = prompt(
+                                  'Enter reason for suspension:'
+                                )
+                                if (reason) handleSuspendJob(job.job_id, reason)
+                              }}
+                              disabled={job.status === 'suspended' || isLoading}
+                              className="bg-gradient-to-r from-amber-600 to-orange-600 text-white px-4 py-2 rounded-xl hover:from-amber-700 hover:to-orange-700 transition-all duration-300 flex items-center shadow-lg hover:shadow-xl"
+                            >
+                              <Ban className="w-4 h-4 mr-2" />
+                              Suspend
+                            </Button>
+                          </motion.div>
+                          <motion.div
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            className="inline-block"
+                          >
+                            <Button
+                              variant="danger"
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    'Are you sure you want to delete this job?'
+                                  )
+                                ) {
+                                  handleDeleteJob(job.job_id)
+                                }
+                              }}
+                              disabled={isLoading}
+                              className="bg-gradient-to-r from-red-600 to-pink-600 text-white px-4 py-2 rounded-xl hover:from-red-700 hover:to-pink-700 transition-all duration-300 flex items-center shadow-lg hover:shadow-xl"
+                            >
+                              <Trash2 className="w-4 h-4 mr-2" />
+                              Delete
+                            </Button>
+                          </motion.div>
+                        </div>
                       </td>
-                    </tr>
+                    </motion.tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
+          </motion.div>
 
           {/* Reports Download */}
-          <div className="mt-8 bg-white dark:bg-gray-900 p-6 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
-              <FileText className="w-6 h-6 mr-2 text-indigo-600 dark:text-indigo-300" />
-              Reports
-            </h2>
-            <Button
-              variant="primary"
-              onClick={() =>
-                downloadAsPDF('analytics-report', 'Analytics_Report')
-              }
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Download Analytics Report
-            </Button>
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.0, duration: 0.8 }}
+            className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 hover:shadow-2xl transition-all duration-300"
+          >
+            <div className="flex items-center mb-8">
+              <div className="p-3 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl mr-4">
+                <FileText className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  Reports
+                </h2>
+                <p className="text-gray-600 dark:text-gray-400">
+                  Download comprehensive analytics reports
+                </p>
+              </div>
+            </div>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button
+                variant="primary"
+                onClick={() =>
+                  downloadAsPDF('analytics-report', 'Analytics_Report')
+                }
+                className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center"
+              >
+                <Download className="w-5 h-5 mr-2" />
+                Download Analytics Report
+              </Button>
+            </motion.div>
             <div id="analytics-report" className="hidden">
               <h1>Analytics Report</h1>
               <p>Total Candidates: {candidates.length}</p>
@@ -526,7 +828,7 @@ const Analytics = () => {
                 ))}
               </ul>
             </div>
-          </div>
+          </motion.div>
         </div>
       </div>
     </div>

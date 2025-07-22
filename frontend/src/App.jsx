@@ -2,7 +2,6 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { lazy, Suspense } from 'react'
 import { useAuth } from './context/AuthContext'
 import ClockLoader from './components/ClockLoader'
-import RecruiterOverview from './pages/RecruiterOverview'
 
 const Home = lazy(() => import('./pages/Home'))
 const CandidateLogin = lazy(() => import('./pages/CandidateLogin'))
@@ -23,6 +22,7 @@ const CandidateConfirm = lazy(() => import('./pages/CandidateConfirm'))
 const CandidateResult = lazy(() => import('./pages/CandidateResult'))
 const AssessmentResults = lazy(() => import('./pages/AssessmentResults'))
 const CandidateOverview = lazy(() => import('./pages/CandidateOverview'))
+const RecruiterOverview = lazy(() => import('./pages/RecruiterOverview'))
 const Analytics = lazy(() => import('./Analytics'))
 const CandidateProctoring = lazy(() =>
   import('./components/CandidateProctoring')

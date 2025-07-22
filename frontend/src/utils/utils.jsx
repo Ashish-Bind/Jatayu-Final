@@ -145,28 +145,25 @@ export const downloadAsPDF = (elementId, fileName) => {
   })
 }
 
-export const requestFullscreen = () => {
+export const requestFullscreen = async () => {
   const elem = document.documentElement
-  if (elem.requestFullscreen) {
-    return elem.requestFullscreen().catch((err) => {
-      console.error('Fullscreen request failed:', err)
-      throw err
-    })
-  } else if (elem.webkitRequestFullscreen) {
-    return elem.webkitRequestFullscreen().catch((err) => {
-      console.error('Fullscreen request failed (webkit):', err)
-      throw err
-    })
-  } else if (elem.mozRequestFullScreen) {
-    return elem.mozRequestFullScreen().catch((err) => {
-      console.error('Fullscreen request failed (moz):', err)
-      throw err
-    })
-  } else if (elem.msRequestFullscreen) {
-    return elem.msRequestFullscreen().catch((err) => {
-      console.error('Fullscreen request failed (ms):', err)
-      throw err
-    })
+  console.log('requestFullscreen: Attempting to enter fullscreen')
+  try {
+    if (elem.requestFullscreen) {
+      await elem.requestFullscreen()
+    } else if (elem.webkitRequestFullscreen) {
+      await elem.webkitRequestFullscreen()
+    } else if (elem.mozRequestFullScreen) {
+      await elem.mozRequestFullScreen()
+    } else if (elem.msRequestFullscreen) {
+      await elem.msRequestFullscreen()
+    } else {
+      throw new Error('Fullscreen API not supported')
+    }
+    console.log('requestFullscreen: Fullscreen entered successfully')
+  } catch (err) {
+    console.error('requestFullscreen: Failed', err.message, err)
+    throw err
   }
 }
 
@@ -242,26 +239,41 @@ export const preventCopyPaste = (e, setProctoringRemarks) => {
 
 export const captureSnapshot = async (
   attemptId,
-  videoElement,
+  webcamRef,
   setProctoringRemarks,
   setShowSnapshotNotification
 ) => {
   try {
-    const canvas = document.createElement('canvas')
-    canvas.width = 640
-    canvas.height = 480
-    canvas
-      .getContext('2d')
-      .drawImage(videoElement, 0, 0, canvas.width, canvas.height)
+    if (!webcamRef || !webcamRef.current || !webcamRef.current.video) {
+      throw new Error('Webcam reference or video element is not available')
+    }
 
-    const blob = await new Promise((resolve) =>
-      canvas.toBlob(resolve, 'image/jpeg', 0.8)
-    )
+    // Wait for webcam to be ready with a timeout
+    const maxAttempts = 5
+    let attempts = 0
+    let imageSrc = null
 
+    while (attempts < maxAttempts) {
+      if (webcamRef.current.video.readyState === 4) {
+        imageSrc = webcamRef.current.getScreenshot()
+        if (imageSrc) break
+      }
+      attempts++
+      await new Promise((resolve) => setTimeout(resolve, 500)) // Wait 500ms before retry
+    }
+
+    if (!imageSrc) {
+      throw new Error(
+        `Failed to capture screenshot from webcam after ${maxAttempts} attempts`
+      )
+    }
+
+    const response = await fetch(imageSrc)
+    const blob = await response.blob()
     const formData = new FormData()
     formData.append('snapshot', blob, `snapshot.jpg`)
 
-    const response = await fetch(
+    const response2 = await fetch(
       `${baseUrl}/assessment/capture-snapshot/${attemptId}`,
       {
         method: 'POST',
@@ -270,9 +282,9 @@ export const captureSnapshot = async (
       }
     )
 
-    if (!response.ok) {
-      const data = await response.json()
-      throw new Error(data.error || `HTTP error ${response.status}`)
+    if (!response2.ok) {
+      const data = await response2.json()
+      throw new Error(data.error || `HTTP error ${response2.status}`)
     }
 
     setProctoringRemarks((prev) => [
@@ -281,6 +293,7 @@ export const captureSnapshot = async (
     ])
     setShowSnapshotNotification(true)
   } catch (error) {
+    console.error('Capture snapshot error:', error)
     throw new Error(`Failed to capture snapshot: ${error.message}`)
   }
 }
