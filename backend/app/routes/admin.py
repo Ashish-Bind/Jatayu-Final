@@ -3,7 +3,7 @@ from flask_mail import Message
 from app import db
 from app.models.superadmin import Superadmin
 from app.models.recruiter import Recruiter
-from app.models.user import User
+from app.models.user import User, PasswordResetToken
 from app.models.job import JobDescription
 from app.models.subscription_plan import SubscriptionPlan
 from app.models.assessment_attempt import AssessmentAttempt
@@ -18,10 +18,17 @@ from app import db, mail, limiter
 from flask_mail import Message
 from datetime import date
 from calendar import monthrange
+from app.utils.gcs_upload import upload_to_gcs, delete_from_gcs
+import secrets
 
 admin_api_bp = Blueprint('admin_api', __name__, url_prefix='/api/superadmin')
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'static', 'uploads'))
+LOGOS_DIR = os.path.join(PROJECT_ROOT, 'logos')
+
+os.makedirs(LOGOS_DIR, exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -136,12 +143,12 @@ def update_client(id):
     if 'logo' in request.files:
         file = request.files['logo']
         if file and allowed_file(file.filename):
-            if recruiter.logo and os.path.exists(os.path.join(current_app.config['UPLOAD_FOLDER'], os.path.basename(recruiter.logo))):
-                os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], os.path.basename(recruiter.logo)))
+            delete_from_gcs(recruiter.logo)
             filename = secure_filename(file.filename)
             unique_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{filename}"
-            file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
-            recruiter.logo = f"uploads/logos/{unique_filename}"
+            file_path = f'upload/logos/{unique_filename}'
+            recruiter.logo = file_path
+            upload_to_gcs(file, file_path, 'image/jpeg')
 
     db.session.commit()
     update_monthly_earnings()
@@ -199,15 +206,17 @@ def create_client():
         return jsonify({'error': 'Unauthorized'}), 401
 
     data = request.form
-    required_fields = ['name', 'email', 'password', 'company', 'phone']
+    required_fields = ['name', 'email', 'company', 'phone']
     if not all(field in data for field in required_fields):
         return jsonify({'error': 'Missing required fields'}), 400
 
     if User.query.filter_by(email=data['email']).first():
         return jsonify({'error': 'Email already exists'}), 400
 
-    user = User(name=data['name'], email=data['email'], role='recruiter')
-    user.set_password(data['password'])
+    # Generate a default password
+    default_password = 'admin1234'  # Secure random 12-character password
+    user = User(name=data['name'], email=data['email'], role='recruiter', is_active=True)
+    user.set_password(default_password)
     db.session.add(user)
     db.session.flush()
 
@@ -218,21 +227,21 @@ def create_client():
         status=data.get('status', 'Active')
     )
 
-    from flask import current_app
     if 'logo' in request.files:
         file = request.files['logo']
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
             unique_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{filename}"
-            file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
-            recruiter.logo = f"uploads/logos/{unique_filename}"
+            file_path = f'upload/logos/{unique_filename}'
+            recruiter.logo = file_path
+            upload_to_gcs(file, file_path, 'image/jpeg')
+
 
     # Assign or create default "Basic" subscription plan
     basic_plan = SubscriptionPlan.query.filter_by(name='Basic').first()
     if not basic_plan:
-        basic_plan = SubscriptionPlan(
-            name='Basic',
-            price=5000,  # Set default price for Basic
+        basic_plan = SubscriptionPlan(name='Basic',
+            price=5000,
             candidate_limit=10,
             assessment_limit=20,
             skill_limit=5,
@@ -242,11 +251,7 @@ def create_client():
             is_active=True
         )
         db.session.add(basic_plan)
-    else:
-        # Ensure the existing plan is used without re-adding
-        pass
-
-    db.session.flush()  # Ensure basic_plan is persisted before assignment
+    db.session.flush()
 
     recruiter.subscription_plan_id = basic_plan.id
     recruiter.subscription_start_date = datetime.utcnow()
@@ -254,11 +259,52 @@ def create_client():
     recruiter.current_candidate_count = 0
     recruiter.current_assessment_count = 0
 
+    # Generate password reset token
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.utcnow() + timedelta(hours=24)
+    reset_token = PasswordResetToken(
+        user_id=user.id,
+        token=token,
+        created_at=datetime.utcnow(),
+        expires_at=expires_at
+    )
+    db.session.add(reset_token)
+
+    # Send password reset email
+    reset_url = f"http://localhost:5173/candidate/reset-password?token={token}"
+    msg = Message(
+        subject="Welcome to Quizzer - Set Your Password",
+        sender=os.getenv('MAIL_DEFAULT_SENDER'),
+        recipients=[data['email']],
+        body=f"""
+        Hello {data['name']},
+
+        Your recruiter account has been created successfully. Please set your password by clicking the link below:
+        {reset_url}
+
+        This link will expire in 24 hours. For security, you must set a new password to access your account.
+
+        Best,
+        Quizzer
+        """
+    )
+    try:
+        mail.send(msg)
+        print(f"📧 Password reset link sent to {data['email']}")
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Error sending password reset email: {e}")
+        return jsonify({'error': 'Failed to send password reset email'}), 500
+
     db.session.add(recruiter)
     db.session.commit()
 
-    return jsonify({'message': 'Client created successfully', 'id': recruiter.recruiter_id, 'logo': recruiter.logo}), 201
-
+    return jsonify({
+        'message': 'Client created successfully',
+        'id': recruiter.recruiter_id,
+        'logo': recruiter.logo,
+        'default_password': default_password  # Include for debugging; remove in production
+    }), 201
 @admin_api_bp.route('/subscription-plans', methods=['GET'])
 def get_subscription_plans():
     if 'user_id' not in session or session.get('role') != 'superadmin':

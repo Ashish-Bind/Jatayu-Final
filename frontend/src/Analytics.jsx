@@ -594,48 +594,36 @@ const Analytics = () => {
                             }
                             className="mr-2 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
                           />
-                          <motion.div
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            className="inline-block"
-                          >
-                            <Button
-                              variant="primary"
-                              onClick={() => {
-                                const reason = prompt(
-                                  'Enter reason for blocking:'
+                          <Button
+                            variant="primary"
+                            onClick={() => {
+                              const reason = prompt(
+                                'Enter reason for blocking:'
+                              )
+                              if (reason)
+                                handleBlockCandidate(
+                                  candidate.candidate_id,
+                                  reason
                                 )
-                                if (reason)
-                                  handleBlockCandidate(
-                                    candidate.candidate_id,
-                                    reason
-                                  )
-                              }}
-                              disabled={
-                                candidate.status === 'blocked' || isLoading
-                              }
-                              className="bg-gradient-to-r from-red-600 to-pink-600 text-white px-4 py-2 rounded-xl hover:from-red-700 hover:to-pink-700 transition-all duration-300 flex items-center shadow-lg hover:shadow-xl"
-                            >
-                              <Ban className="w-4 h-4 mr-2" />
-                              Block
-                            </Button>
-                          </motion.div>
-                          <motion.div
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            className="inline-block"
+                            }}
+                            disabled={
+                              candidate.status === 'blocked' || isLoading
+                            }
+                            className="bg-gradient-to-r from-red-600 to-pink-600 text-white px-4 py-2 rounded-xl hover:from-red-700 hover:to-pink-700 transition-all duration-300 flex items-center shadow-lg hover:shadow-xl"
                           >
-                            <Button
-                              variant="link"
-                              onClick={() =>
-                                handleDownloadReport(candidate.candidate_id)
-                              }
-                              className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 transition-all duration-200 flex items-center"
-                            >
-                              <Download className="w-4 h-4 mr-2" />
-                              Report
-                            </Button>
-                          </motion.div>
+                            <Ban className="w-4 h-4 mr-2" />
+                            Block
+                          </Button>
+                          <Button
+                            variant="link"
+                            onClick={() =>
+                              handleDownloadReport(candidate.candidate_id)
+                            }
+                            className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 transition-all duration-200 flex items-center"
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            Report
+                          </Button>
                         </div>
                       </td>
                     </motion.tr>
@@ -728,49 +716,37 @@ const Analytics = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <div className="flex gap-2">
-                          <motion.div
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            className="inline-block"
+                          <Button
+                            variant="primary"
+                            onClick={() => {
+                              const reason = prompt(
+                                'Enter reason for suspension:'
+                              )
+                              if (reason) handleSuspendJob(job.job_id, reason)
+                            }}
+                            disabled={job.status === 'suspended' || isLoading}
+                            className="bg-gradient-to-r from-amber-600 to-orange-600 text-white px-4 py-2 rounded-xl hover:from-amber-700 hover:to-orange-700 transition-all duration-300 flex items-center shadow-lg hover:shadow-xl"
                           >
-                            <Button
-                              variant="primary"
-                              onClick={() => {
-                                const reason = prompt(
-                                  'Enter reason for suspension:'
+                            <Ban className="w-4 h-4 mr-2" />
+                            Suspend
+                          </Button>
+                          <Button
+                            variant="danger"
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  'Are you sure you want to delete this job?'
                                 )
-                                if (reason) handleSuspendJob(job.job_id, reason)
-                              }}
-                              disabled={job.status === 'suspended' || isLoading}
-                              className="bg-gradient-to-r from-amber-600 to-orange-600 text-white px-4 py-2 rounded-xl hover:from-amber-700 hover:to-orange-700 transition-all duration-300 flex items-center shadow-lg hover:shadow-xl"
-                            >
-                              <Ban className="w-4 h-4 mr-2" />
-                              Suspend
-                            </Button>
-                          </motion.div>
-                          <motion.div
-                            whileHover={{ scale: 1.05 }}
-                            whileTap={{ scale: 0.95 }}
-                            className="inline-block"
+                              ) {
+                                handleDeleteJob(job.job_id)
+                              }
+                            }}
+                            disabled={isLoading}
+                            className="bg-gradient-to-r from-red-600 to-pink-600 text-white px-4 py-2 rounded-xl hover:from-red-700 hover:to-pink-700 transition-all duration-300 flex items-center shadow-lg hover:shadow-xl"
                           >
-                            <Button
-                              variant="danger"
-                              onClick={() => {
-                                if (
-                                  window.confirm(
-                                    'Are you sure you want to delete this job?'
-                                  )
-                                ) {
-                                  handleDeleteJob(job.job_id)
-                                }
-                              }}
-                              disabled={isLoading}
-                              className="bg-gradient-to-r from-red-600 to-pink-600 text-white px-4 py-2 rounded-xl hover:from-red-700 hover:to-pink-700 transition-all duration-300 flex items-center shadow-lg hover:shadow-xl"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" />
-                              Delete
-                            </Button>
-                          </motion.div>
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete
+                          </Button>
                         </div>
                       </td>
                     </motion.tr>

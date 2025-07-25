@@ -9,13 +9,15 @@ import {
   LogOut,
   Verified,
   CreditCard,
+  Users,
+  FileText,
 } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import ClockLoader from '../components/ClockLoader'
 import { Link } from 'react-router-dom'
 import LinkButton from '../components/LinkButton'
 import Button from '../components/Button'
-import { baseUrl } from '../utils/utils'
+import { baseUrl, formatDate } from '../utils/utils'
 
 const RecruiterOverview = () => {
   const { user, logout } = useAuth()
@@ -49,8 +51,8 @@ const RecruiterOverview = () => {
   useEffect(() => {
     if (!user || user.role !== 'recruiter') return
 
-    // Fetch recruiter profile
-    fetch(`${baseUrl}/recruiter/assessments/${user.id}`, {
+    // Fetch recruiter profile and subscription details
+    fetch(`${baseUrl}/subscriptions/plan/${user.id}`, {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
     })
@@ -59,6 +61,16 @@ const RecruiterOverview = () => {
         setRecruiter({
           company: data[0]?.company || 'Not specified',
           logo: data[0]?.logo || null,
+          subscription_plan: data[0]?.subscription_plan || {
+            name: 'None',
+            candidate_limit: 0,
+            assessment_limit: 0,
+            ai_reports: false,
+            start_date: null,
+            end_date: null,
+            current_candidate_count: 0,
+            current_assessment_count: 0,
+          },
         })
       })
       .catch((error) => setError(`Failed to load profile: ${error.message}`))
@@ -237,28 +249,38 @@ const RecruiterOverview = () => {
 
             {/* Recruiter Info */}
             <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300">
-              <div className="flex items-center mb-6">
-                <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
-                  <Briefcase className="w-8 h-8 text-white" />
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex">
+                  <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
+                    <Briefcase className="w-8 h-8 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                      My Profile
+                    </h3>
+                    <p className="text-gray-600 dark:text-gray-400">
+                      Manage your company details
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
-                    My Profile
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    Manage your company details
-                  </p>
-                </div>
+                <LinkButton
+                  to="/recruiter/profile"
+                  className="w-fit bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+                >
+                  Edit Profile
+                </LinkButton>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-3">
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       Company:
                     </span>{' '}
                     {recruiter.company}
                   </p>
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       Total Jobs:
                     </span>{' '}
@@ -266,7 +288,8 @@ const RecruiterOverview = () => {
                       jobs.suspended.length +
                       jobs.deleted.length}
                   </p>
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       Active Jobs:
                     </span>{' '}
@@ -274,30 +297,108 @@ const RecruiterOverview = () => {
                   </p>
                 </div>
                 <div className="flex flex-col gap-3">
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       Suspended Jobs:
                     </span>{' '}
                     {jobs.suspended.length}
                   </p>
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       Deleted Jobs:
                     </span>{' '}
                     {jobs.deleted.length}
                   </p>
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <Users className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       Total Candidates:
                     </span>{' '}
                     {candidates.length}
                   </p>
-                  <LinkButton
-                    to="/recruiter/profile"
-                    className="w-fit bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
-                  >
-                    Edit Profile
-                  </LinkButton>
+                </div>
+              </div>
+            </div>
+
+            {/* Subscription Details */}
+            <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300">
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex">
+                  <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
+                    <CreditCard className="w-8 h-8 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                      Subscription Details
+                    </h3>
+                    <p className="text-gray-600 dark:text-gray-400">
+                      View and manage your subscription plan
+                    </p>
+                  </div>
+                </div>
+                <LinkButton
+                  to="/recruiter/subscriptions"
+                  className="w-fit bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+                >
+                  Manage Subscription
+                </LinkButton>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex flex-col gap-3">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <CreditCard className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Subscription Plan:
+                    </span>{' '}
+                    {recruiter.subscription_plan.name}
+                  </p>
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Subscription Start:
+                    </span>{' '}
+                    {recruiter.subscription_plan.start_date
+                      ? formatDate(recruiter.subscription_plan.start_date)
+                      : 'N/A'}
+                  </p>
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Subscription End:
+                    </span>{' '}
+                    {recruiter.subscription_plan.end_date
+                      ? formatDate(recruiter.subscription_plan.end_date)
+                      : 'N/A'}
+                  </p>
+                </div>
+                <div className="flex flex-col gap-3">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <Users className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Candidate Limit:
+                    </span>{' '}
+                    {recruiter.subscription_plan.current_candidate_count} /{' '}
+                    {recruiter.subscription_plan.candidate_limit}
+                  </p>
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      Assessment Limit:
+                    </span>{' '}
+                    {recruiter.subscription_plan.current_assessment_count} /{' '}
+                    {recruiter.subscription_plan.assessment_limit}
+                  </p>
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <Verified className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      AI Reports:
+                    </span>{' '}
+                    {recruiter.subscription_plan.ai_reports
+                      ? 'Enabled'
+                      : 'Disabled'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -325,9 +426,9 @@ const RecruiterOverview = () => {
                   >
                     {recruiter.logo && (
                       <img
-                        src={`http://localhost:5000/static/uploads/${recruiter.logo}`}
+                        src={`https://storage.googleapis.com/gen-ai-quiz/uploads/${recruiter.logo}`}
                         alt="Company Logo"
-                        className="w-full h-32 object-contain rounded-lg mb-4"
+                        className="w-full h-32 object-cover rounded-lg mb-4"
                       />
                     )}
                     <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
@@ -418,7 +519,8 @@ const RecruiterOverview = () => {
                 </div>
               </div>
               <div className="flex flex-col gap-3">
-                <p className="text-base text-gray-600 dark:text-gray-400">
+                <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                   <span className="font-medium text-gray-900 dark:text-gray-100">
                     Last login:
                   </span>{' '}
@@ -426,7 +528,8 @@ const RecruiterOverview = () => {
                     timeZone: 'Asia/Kolkata',
                   })}
                 </p>
-                <p className="text-base text-gray-600 dark:text-gray-400">
+                <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                   <span className="font-medium text-gray-900 dark:text-gray-100">
                     Last job created:
                   </span>{' '}
@@ -448,7 +551,7 @@ const RecruiterOverview = () => {
             {recruiter.logo && (
               <img
                 className="w-24 h-24 rounded-full mx-auto object-cover border-4 border-indigo-600 dark:border-indigo-400"
-                src={`http://localhost:5000/static/uploads/${recruiter.logo}`}
+                src={`https://storage.googleapis.com/gen-ai-quiz/uploads/${recruiter.logo}`}
                 alt="Company Logo"
               />
             )}
@@ -459,8 +562,8 @@ const RecruiterOverview = () => {
               Good Afternoon, Recruiter 🔥
             </p>
             <p className="text-base text-indigo-600 dark:text-indigo-400 flex items-center gap-2 justify-center">
-              <Briefcase className="w-5 h-5" /> Active Jobs:{' '}
-              {jobs.active.length}
+              <Briefcase className="w-5 h-5" />
+              Active Jobs: {jobs.active.length}
             </p>
             <Button
               to="/recruiter/create-assessment"

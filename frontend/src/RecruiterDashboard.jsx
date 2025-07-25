@@ -731,7 +731,7 @@ const RecruiterDashboard = () => {
                   >
                     {assessment.logo && (
                       <img
-                        src={`http://localhost:5000/static/uploads/${assessment.logo}`}
+                        src={`https://storage.googleapis.com/gen-ai-quiz/uploads/${assessment.logo}`}
                         alt="Company Logo"
                         className="w-full h-32 object-cover rounded-xl mb-4 border border-gray-200/50 dark:border-gray-700/50"
                       />
@@ -843,7 +843,7 @@ const RecruiterDashboard = () => {
                   >
                     {assessment.logo && (
                       <img
-                        src={`http://localhost:5000/static/uploads/${assessment.logo}`}
+                        src={`https://storage.googleapis.com/gen-ai-quiz/uploads/${assessment.logo}`}
                         alt="Company Logo"
                         className="w-full h-32 object-cover rounded-xl mb-4 border border-gray-200/50 dark:border-gray-700/50"
                       />

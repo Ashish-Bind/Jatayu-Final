@@ -91,7 +91,7 @@ const AssessmentMessages = ({
             <Send className="w-5 h-5" />
             Submit Answer
           </Button>
-          <Button
+          {/* <Button
             type="button"
             onClick={endAssessment}
             variant="secondary"
@@ -100,7 +100,7 @@ const AssessmentMessages = ({
           >
             <StopCircle className="w-5 h-5" />
             End Assessment
-          </Button>
+          </Button> */}
         </form>
       )}
     </>

@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, session
 import os
 import re
 import difflib
@@ -18,6 +18,7 @@ from app.models.resume_json import ResumeJson
 from app.models.recruiter import Recruiter
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone
+from app.utils.gcs_upload import upload_to_gcs, delete_from_gcs
 import pytz
 import google.generativeai as genai
 import logging
@@ -25,6 +26,7 @@ from io import BytesIO
 from pdfminer.high_level import extract_text
 from sqlalchemy.orm import joinedload
 import json
+import requests
 
 candidate_api_bp = Blueprint('candidate_api', __name__, url_prefix='/api/candidate')
 
@@ -275,22 +277,35 @@ def infer_proficiency(skill, work_experience, education, projects):
 def verify_faces(profile_pic_file, webcam_image_file):
     """Verify if the faces in the two images match with at least 70% similarity."""
     try:
-        profile_pic_path = f"app/static/uploads/temp_profile_{datetime.now(timezone.utc).timestamp()}.jpg"
-        webcam_image_path = f"app/static/uploads/temp_webcam_{datetime.now(timezone.utc).timestamp()}.jpg"
+        timestamp = str(int(datetime.now(timezone.utc).timestamp()))
+        profile_path = f"temp/profile_{timestamp}.jpg"
+        webcam_path = f"temp/webcam_{timestamp}.jpg"
 
-        profile_pic_file.save(profile_pic_path)
-        webcam_image_file.save(webcam_image_path)
+        # Upload both to GCS
+        profile_url = upload_to_gcs(
+            file_obj=profile_pic_file,
+            destination_path=profile_path,
+            content_type='image/jpeg'
+        )
 
+        webcam_url = upload_to_gcs(
+            file_obj=webcam_image_file,
+            destination_path=webcam_path,
+            content_type='image/jpeg'
+        )
+
+        # Run verification directly on public URLs
         result = DeepFace.verify(
-            img1_path=profile_pic_path,
-            img2_path=webcam_image_path,
+            img1_path=profile_url,
+            img2_path=webcam_url,
             model_name='Facenet',
             distance_metric='cosine',
             enforce_detection=True
         )
 
-        os.remove(profile_pic_path)
-        os.remove(webcam_image_path)
+        # Optional: Clean up GCS temp images
+        delete_from_gcs(profile_path)
+        delete_from_gcs(webcam_path)
 
         verified = result['verified']
         distance = result['distance']
@@ -329,6 +344,7 @@ def get_profile_by_user(user_id):
         'github': candidate.github,
         'degree': candidate.degree.degree_name if candidate.degree else None,
         'degree_branch': candidate.branch.branch_name if candidate.branch else None,
+        'branch_id': candidate.degree_branch if candidate.degree_branch else None,
         'degree_id': candidate.degree_id,
         'passout_year': candidate.passout_year,
         'years_of_experience': candidate.years_of_experience,
@@ -339,6 +355,39 @@ def get_profile_by_user(user_id):
         'skills': skills
     })
 
+@candidate_api_bp.route('/verify-face', methods=['POST'])
+def verify_face():
+    try:
+        webcam_image_file = request.files.get('webcam_image')
+
+        if 'user_id' not in session  or not webcam_image_file:
+            return jsonify({'success': False, 'error': 'No user logged in or webcam image'}), 400
+
+        # Fetch user and profile picture
+        candidate = Candidate.query.filter_by(user_id=session['user_id']).first()
+        if not candidate or not candidate.profile_picture:
+            return jsonify({'success': False, 'error': 'User or profile picture not found'}), 404
+
+        if not candidate.profile_picture:
+            return jsonify({'success': False, 'error': 'No profile picture'}), 400
+
+        
+        profile_image_url = f'https://storage.googleapis.com/gen-ai-quiz/uploads/{candidate.profile_picture}'
+        response = requests.get(profile_image_url)
+        profile_image = BytesIO(response.content)
+        profile_image.name = 'profile.jpg'
+
+        # Call DeepFace verify
+        result = verify_faces(profile_image, webcam_image_file)
+
+        return jsonify({
+            'success': result['verified'],
+            'similarity': result['similarity']
+        }), 200
+
+    except Exception as e:
+        print("Face verification API error:", str(e))
+        return jsonify({'success': False, 'error': str(e)}), 500
 @candidate_api_bp.route('/degrees', methods=['GET'])
 def get_degrees():
     """Retrieve the list of available degrees."""
@@ -474,9 +523,9 @@ def update_profile(user_id):
         candidate.years_of_experience = form_experience
 
         if resume_file:
+            resume_file.seek(0)  # reset stream before upload
             resume_filename = f"resumes/{candidate.candidate_id}_{resume_file.filename}"
-            resume_path = os.path.join('app/static/uploads', resume_filename)
-            resume_file.save(resume_path)
+            resume_url = upload_to_gcs(resume_file, resume_filename, content_type='application/pdf')
             candidate.resume = resume_filename
 
             # Update skills
@@ -521,14 +570,12 @@ def update_profile(user_id):
 
         if profile_pic_file:
             profile_pic_filename = f"profile_pics/{candidate.candidate_id}_{profile_pic_file.filename}"
-            profile_pic_path = os.path.join('app/static/uploads', profile_pic_filename)
-            profile_pic_file.save(profile_pic_path)
+            profile_pic_url = upload_to_gcs(profile_pic_file, profile_pic_filename, content_type='image/jpeg')
             candidate.profile_picture = profile_pic_filename
 
         if webcam_image_file:
             webcam_image_filename = f"webcam_images/{candidate.candidate_id}_{webcam_image_file.filename}"
-            webcam_image_path = os.path.join('app/static/uploads', webcam_image_filename)
-            webcam_image_file.save(webcam_image_path)
+            webcam_image_url = upload_to_gcs(webcam_image_file, webcam_image_filename, content_type='image/jpeg')
             candidate.camera_image = webcam_image_filename
 
         candidate.is_profile_complete = True

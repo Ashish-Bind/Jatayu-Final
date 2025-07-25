@@ -174,13 +174,13 @@ const CandidateProctoring = () => {
                   </h3>
                 </div>
                 {data.violations && data.violations.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
                     {data.violations.map((violation) => (
                       <div key={violation.violation_id} className="relative">
                         <img
-                          src={`http://localhost:5000/static/uploads/${violation.snapshot_path}`}
+                          src={`https://storage.googleapis.com/gen-ai-quiz/uploads/${violation.snapshot_path}`}
                           alt="Violation Snapshot"
-                          className="w-full h-32 object-cover rounded-lg"
+                          className="w-full h-full object-cover rounded-lg"
                         />
                         <span className="absolute top-2 left-2 text-sm text-white bg-black bg-opacity-50 px-2 py-1 rounded">
                           {new Date(violation.timestamp).toLocaleString()}
@@ -209,13 +209,13 @@ const CandidateProctoring = () => {
                   </h3>
                 </div>
                 {data.snapshots.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
                     {data.snapshots.map((snapshot, index) => (
                       <div key={index} className="relative">
                         <img
-                          src={`http://localhost:5000/static/uploads/${snapshot.path}`}
+                          src={`https://storage.googleapis.com/gen-ai-quiz/uploads/${snapshot.path}`}
                           alt={`Snapshot ${index + 1}`}
-                          className="w-full h-32 object-cover rounded-lg"
+                          className="w-full h-full object-cover rounded-lg"
                         />
                         <span className="absolute top-2 left-2 text-sm text-white bg-black bg-opacity-50 px-2 py-1 rounded">
                           {new Date(snapshot.timestamp).toLocaleString()}
