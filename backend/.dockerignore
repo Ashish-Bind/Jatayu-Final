@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+*.log
+.env
+*.jpg
+*.png
+*.pdf
+static/uploads/*
+keys/*

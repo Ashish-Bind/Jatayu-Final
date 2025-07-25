@@ -289,7 +289,7 @@ const Home = () => {
               <motion.div variants={itemVariants}>
                 <LinkButton
                   to="/candidate/signup"
-                  className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
+                  className="bg-gradient-to-r border-2 border-transparent from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
                   variants={buttonVariants}
                   whileHover="hover"
                 >
@@ -440,7 +440,7 @@ const Home = () => {
             {pricingPlans.map((plan) => (
               <motion.div
                 key={plan.name}
-                className={`group bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-2xl hover:scale-105 transition-all duration-300 relative ${
+                className={`group flex flex-col justify-between bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-2xl hover:scale-105 transition-all duration-300 relative ${
                   plan.isPopular
                     ? 'ring-2 ring-indigo-500 dark:ring-indigo-400'
                     : ''

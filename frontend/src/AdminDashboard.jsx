@@ -667,50 +667,49 @@ const AdminDashboard = () => {
               )}
 
               {/* Search and Filters */}
-              <div className="mb-8 p-6 bg-gradient-to-r from-gray-50 to-blue-50 dark:from-gray-700 dark:to-gray-600 rounded-2xl border border-gray-200 dark:border-gray-600">
-                <div className="flex flex-col lg:flex-row gap-4">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                    <input
-                      type="text"
-                      placeholder="Search by name or company..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white/80 dark:bg-gray-600/80 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none transition-all duration-200 backdrop-blur-sm"
-                    />
+
+              <div className="flex flex-col lg:flex-row gap-4 my-2">
+                <div className="relative flex-1">
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <input
+                    type="text"
+                    placeholder="Search by name or company..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-12 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white/80 dark:bg-gray-600/80 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none transition-all duration-200 backdrop-blur-sm"
+                  />
+                </div>
+                <div className="flex gap-4">
+                  <div className="relative">
+                    <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className="pl-10 pr-8 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white/80 dark:bg-gray-600/80 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none transition-all duration-200 backdrop-blur-sm appearance-none cursor-pointer"
+                    >
+                      <option value="All">All Statuses</option>
+                      <option value="Active">Active</option>
+                      <option value="Trial">Trial</option>
+                      <option value="Inactive">Inactive</option>
+                    </select>
                   </div>
-                  <div className="flex gap-4">
-                    <div className="relative">
-                      <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                      <select
-                        value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
-                        className="pl-10 pr-8 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white/80 dark:bg-gray-600/80 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none transition-all duration-200 backdrop-blur-sm appearance-none cursor-pointer"
-                      >
-                        <option value="All">All Statuses</option>
-                        <option value="Active">Active</option>
-                        <option value="Trial">Trial</option>
-                        <option value="Inactive">Inactive</option>
-                      </select>
-                    </div>
-                    <div className="relative">
-                      <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                      <select
-                        value={planFilter}
-                        onChange={(e) => setPlanFilter(e.target.value)}
-                        className="pl-10 pr-8 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white/80 dark:bg-gray-600/80 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none transition-all duration-200 backdrop-blur-sm appearance-none cursor-pointer"
-                      >
-                        <option value="All">All Plans</option>
-                        <option value="Basic">Basic</option>
-                        <option value="Grand">Grand</option>
-                      </select>
-                    </div>
+                  <div className="relative">
+                    <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <select
+                      value={planFilter}
+                      onChange={(e) => setPlanFilter(e.target.value)}
+                      className="pl-10 pr-8 py-3 border border-gray-300 dark:border-gray-600 rounded-xl bg-white/80 dark:bg-gray-600/80 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-500 focus:border-transparent focus:outline-none transition-all duration-200 backdrop-blur-sm appearance-none cursor-pointer"
+                    >
+                      <option value="All">All Plans</option>
+                      <option value="Basic">Basic</option>
+                      <option value="Grand">Grand</option>
+                    </select>
                   </div>
                 </div>
               </div>
 
               {/* Client Table */}
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto rounded-md">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                   <thead className="bg-gray-100/80 dark:bg-gray-700/80 backdrop-blur-sm">
                     <tr>
@@ -858,7 +857,7 @@ const AdminDashboard = () => {
                             />
                           ) : client.logo ? (
                             <img
-                              src={`https://storage.googleapis.com/gen-ai-quiz/${client.logo}`}
+                              src={`https://storage.googleapis.com/gen-ai-quiz/uploads/${client.logo}`}
                               alt="Logo"
                               className="h-10 rounded-lg object-contain"
                             />
@@ -934,7 +933,7 @@ const AdminDashboard = () => {
                   <Eye className="w-5 h-5 mr-2" /> View All Plans
                 </Link>
               </div>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto rounded-md">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                   <thead className="bg-gray-100/80 dark:bg-gray-700/80 backdrop-blur-sm">
                     <tr>

@@ -46,11 +46,8 @@ export default function App() {
         <Route element={<AuthRoute />}>
           <Route path="/candidate/login" element={<CandidateLogin />} />
           <Route path="/candidate/signup" element={<CandidateSignup />} />
-          <Route
-            path="/candidate/forgot-password"
-            element={<ForgotPassword />}
-          />
-          <Route path="/candidate/reset-password" element={<ResetPassword />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/candidate/confirm" element={<CandidateConfirm />} />
         </Route>
         <Route element={<AuthRoute redirectPath="/recruiter/dashboard" />}>

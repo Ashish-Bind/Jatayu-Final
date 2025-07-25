@@ -274,7 +274,7 @@ def forgot_password():
     db.session.add(reset_token)
     db.session.commit()
 
-    reset_url = f"http://localhost:5173/candidate/reset-password?token={token}"
+    reset_url = f"http://localhost:5173/reset-password?token={token}"
     msg = Message(
         subject="Password Reset Request",
         recipients=[user.email],

@@ -314,7 +314,7 @@ const SubscriptionDetails = () => {
                   </div>
                 ) : subscription.logo ? (
                   <img
-                    src={`https://storage.googleapis.com/gen-ai-quiz/${subscription.logo}`}
+                    src={`https://storage.googleapis.com/gen-ai-quiz/uploads/${subscription.logo}`}
                     alt="Client Logo"
                     className="h-24 w-24 rounded-2xl mr-6 object-cover border-4 border-white/30 shadow-xl"
                     onError={(e) => console.log('Image load error:', e)}

@@ -16,6 +16,7 @@ import {
   Loader2,
   Camera,
   Calendar,
+  Mail,
 } from 'lucide-react'
 import Navbar from './components/Navbar'
 import LinkButton from './components/LinkButton'
@@ -425,18 +426,9 @@ const CompleteProfile = () => {
                 My Email Address
               </h3>
               <div className="flex items-center gap-2 mb-1">
-                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/30">
-                  <svg
-                    className="w-4 h-4 text-indigo-600 dark:text-indigo-300"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    viewBox="0 0 24 24"
-                  >
-                    <path d="M4 4h16v16H4z" stroke="none" />
-                    <path d="M22 6l-10 7L2 6" />
-                  </svg>
-                </span>
+                <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30">
+                  <Mail className="w-5 h-5 text-indigo-600 dark:text-indigo-300" />
+                </div>
                 <span className="text-sm text-gray-700 dark:text-gray-200">
                   {candidate?.email || user?.email}
                 </span>
