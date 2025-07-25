@@ -122,7 +122,7 @@ const CandidateLogin = () => {
               <div className="flex items-center justify-between">
                 <div className="text-base">
                   <Link
-                    to="/candidate/forgot-password"
+                    to="/forgot-password"
                     className="font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 transition-all duration-200"
                   >
                     Forgot your password?
