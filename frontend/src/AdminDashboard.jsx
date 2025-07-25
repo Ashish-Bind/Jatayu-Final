@@ -858,7 +858,7 @@ const AdminDashboard = () => {
                             />
                           ) : client.logo ? (
                             <img
-                              src={`http://localhost:5000/static/${client.logo}`}
+                              src={`https://storage.googleapis.com/gen-ai-quiz/${client.logo}`}
                               alt="Logo"
                               className="h-10 rounded-lg object-contain"
                             />

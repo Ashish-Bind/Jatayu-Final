@@ -18,6 +18,8 @@ from app.models.assessment_registration import AssessmentRegistration
 from app.models.assessment_state import AssessmentState
 from app.models.proctoring_violation import ProctoringViolation
 from app.services.question_batches import generate_single_question
+from google.cloud import storage
+from app.utils.gcs_upload import upload_to_gcs
 from deepface import DeepFace
 import timeout_decorator
 import google.api_core.exceptions
@@ -32,9 +34,12 @@ logger = logging.getLogger(__name__)
 # Configure upload directory
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'static', 'uploads'))
 SNAPSHOT_DIR = os.path.join(PROJECT_ROOT, 'snapshots')
+VIOLATOIN_DIR = os.path.join(PROJECT_ROOT, 'violations')
 WEBCAM_DIR = os.path.join(PROJECT_ROOT, 'webcam_images')
 os.makedirs(WEBCAM_DIR, exist_ok=True)  
 os.makedirs(SNAPSHOT_DIR, exist_ok=True)
+os.makedirs(VIOLATOIN_DIR, exist_ok=True)
+
 
 BAND_ORDER = ["good", "better", "perfect"]
 
@@ -118,13 +123,13 @@ def get_base_band(candidate_exp, jd_range):
 def compare_images(snapshot_path, candidate_image_path):
     """Compare snapshot with candidate's profile image using DeepFace."""
     try:
-        snapshot_path = os.path.normpath(snapshot_path)
-        candidate_image_path = os.path.normpath(candidate_image_path)
+        # snapshot_path = os.path.normpath(snapshot_path)
+        # candidate_image_path = os.path.normpath(candidate_image_path)
 
-        if not os.path.exists(snapshot_path):
-            return False, f"Snapshot file does not exist: {snapshot_path}"
-        if not os.path.exists(candidate_image_path):
-            return False, f"Candidate profile image does not exist: {candidate_image_path}"
+        # if not os.path.exists(snapshot_path):
+        #     return False, f"Snapshot file does not exist: {snapshot_path}"
+        # if not os.path.exists(candidate_image_path):
+        #     return False, f"Candidate profile image does not exist: {candidate_image_path}"
 
         try:
             DeepFace.extract_faces(img_path=snapshot_path, enforce_detection=False)
@@ -299,8 +304,8 @@ def capture_snapshot(attempt_id):
 
         timestamp = datetime.utcnow().strftime('%Y%m%dT%H%M%S')
         snapshot_filename = f"attempt{attempt_id}_{timestamp}.jpg"
-        snapshot_path = os.path.join(SNAPSHOT_DIR, snapshot_filename)
-        snapshot_file.save(snapshot_path)
+        snapshot_path = f'snapshots/{snapshot_filename}'
+        upload_to_gcs(snapshot_file, snapshot_path, 'image/jpeg')
 
         if attempt_id not in assessment_states:
             logger.error(f"Assessment session not found for attempt_id={attempt_id}")
@@ -364,13 +369,13 @@ def store_violation(attempt_id):
         # Save snapshot
         timestamp = datetime.utcnow().strftime('%Y%m%dT%H%M%S')
         snapshot_filename = f"violation_attempt{attempt_id}_{timestamp}.jpg"
-        snapshot_path = os.path.join(SNAPSHOT_DIR, snapshot_filename)
-        snapshot_file.save(snapshot_path)
+        snapshot_path = f'violations/{snapshot_filename}'
+        upload_to_gcs(snapshot_file, snapshot_path, 'image/jpeg')
 
         # Store violation in database
         violation = ProctoringViolation(
             attempt_id=attempt_id,
-            snapshot_path=f'snapshots/{snapshot_filename}',
+            snapshot_path=snapshot_path,
             violation_type=violation_type,
             timestamp=datetime.utcnow()
         )
@@ -442,9 +447,9 @@ def get_next_question(attempt_id):
             })
 
             if candidate.profile_picture:
-                profile_image_path = os.path.normpath(os.path.join(PROJECT_ROOT, candidate.profile_picture))
+                profile_image_path =f'https://storage.googleapis.com/gen-ai-quiz/uploads/{candidate.profile_picture}'
                 for snapshot in proctoring_data["snapshots"]:
-                    snapshot_path = os.path.normpath(os.path.join(PROJECT_ROOT, snapshot["path"]))
+                    snapshot_path = f'https://storage.googleapis.com/gen-ai-quiz/uploads/{snapshot["path"]}'
                     is_match, remark = compare_images(snapshot_path, profile_image_path)
                     proctoring_data["remarks"].append(f"Snapshot at {snapshot['timestamp']}: {remark}")
                     snapshot["is_valid"] = is_match

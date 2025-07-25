@@ -24,7 +24,7 @@ export default {
       poppins: ['Poppins', 'sans-serif'],
       'source-sans-pro': ['Source Sans Pro', 'sans-serif'],
       'fira-code': ['Fira Code', 'monospace'],
-      sans: ['Space Grotesk', 'sans-serif'],
+      sans: ['Inter', 'sans-serif'],
       mono: ['Space Grotesk', 'sans-serif'],
     },
   },

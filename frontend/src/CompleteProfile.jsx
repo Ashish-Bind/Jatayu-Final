@@ -33,7 +33,7 @@ const CompleteProfile = () => {
     linkedin: '',
     github: '',
     degree_id: '',
-    degree_branch: '',
+    branch_id: '',
     passout_year: '',
     years_of_experience: '',
     resume: '',
@@ -55,7 +55,6 @@ const CompleteProfile = () => {
   const streamRef = useRef(null)
 
   useEffect(() => {
-    // Fetch candidate profile
     fetch(`${baseUrl}/candidate/profile/${user.id}`, {
       credentials: 'include',
     })
@@ -72,19 +71,19 @@ const CompleteProfile = () => {
           linkedin: data.linkedin || '',
           github: data.github || '',
           degree_id: data.degree_id || '',
-          degree_branch: data.degree_branch || '',
+          branch_id: data.branch_id || '',
           passout_year: data.passout_year || '',
           years_of_experience: data.years_of_experience || '',
           resume: data.resume || '',
         })
         if (data.profile_picture) {
           setProfilePreview(
-            `http://localhost:5000/static/uploads/${data.profile_picture}`
+            `https://storage.googleapis.com/gen-ai-quiz/uploads/${data.profile_picture}`
           )
         }
         if (data.camera_image) {
           setWebcamPreview(
-            `http://localhost:5000/static/uploads/${data.camera_image}`
+            `https://storage.googleapis.com/gen-ai-quiz/uploads/${data.camera_image}`
           )
         }
       })
@@ -96,34 +95,21 @@ const CompleteProfile = () => {
         })
       })
 
-    // Fetch enforce_face_verification flag
-    fetch(`${baseUrl}/auth/check`, {
-      credentials: 'include',
-    })
+    fetch(`${baseUrl}/auth/check`, { credentials: 'include' })
       .then((response) => {
         if (!response.ok) throw new Error('Failed to check auth')
         return response.json()
       })
       .then((data) => {
-        if (data.user) {
-          console.log('✅ Auth check:', {
-            enforceFaceVerification: data.user.enforce_face_verification,
-            lastLoginIP: data.user.last_login_ip, // OPTIONAL if you expose it
-            currentIP: data.user.current_ip, // OPTIONAL if you expose it
-          })
-          if (data.user.enforce_face_verification) {
-            setEnforceFaceVerification(true)
-          }
+        if (data.user && data.user.enforce_face_verification) {
+          setEnforceFaceVerification(true)
         }
       })
       .catch((error) => {
-        console.error('❌ Error checking face verification requirement:', error)
+        console.error('Error checking face verification requirement:', error)
       })
 
-    // Fetch degrees
-    fetch(`${baseUrl}/candidate/degrees`, {
-      credentials: 'include',
-    })
+    fetch(`${baseUrl}/candidate/degrees`, { credentials: 'include' })
       .then((response) => {
         if (!response.ok) throw new Error('Failed to fetch degrees')
         return response.json()
@@ -144,10 +130,7 @@ const CompleteProfile = () => {
         })
       })
 
-    // Fetch branches
-    fetch(`${baseUrl}/candidate/branches`, {
-      credentials: 'include',
-    })
+    fetch(`${baseUrl}/candidate/branches`, { credentials: 'include' })
       .then((response) => {
         if (!response.ok) throw new Error('Failed to fetch branches')
         return response.json()
@@ -167,6 +150,12 @@ const CompleteProfile = () => {
           type: 'error',
         })
       })
+
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop())
+      }
+    }
   }, [user.id])
 
   useEffect(() => {
@@ -190,7 +179,7 @@ const CompleteProfile = () => {
   const handleBranchChange = (selectedOption) => {
     setFormData({
       ...formData,
-      degree_branch: selectedOption ? selectedOption.value : '',
+      branch_id: selectedOption ? selectedOption.value : '',
     })
   }
 
@@ -259,50 +248,88 @@ const CompleteProfile = () => {
     }
   }
 
+  const validateForm = () => {
+    if (
+      !formData.years_of_experience ||
+      isNaN(formData.years_of_experience) ||
+      formData.years_of_experience < 0
+    ) {
+      setMessage({
+        text: 'Years of experience must be a valid number (e.g., 3.5).',
+        type: 'error',
+      })
+      return false
+    }
+
+    if (!formData.degree_id) {
+      setMessage({
+        text: 'Please select a valid degree.',
+        type: 'error',
+      })
+      return false
+    }
+
+    if (!formData.branch_id) {
+      setMessage({
+        text: 'Please select a valid branch/specialization.',
+        type: 'error',
+      })
+      return false
+    }
+
+    if (formData.passout_year && !/^\d{4}$/.test(formData.passout_year)) {
+      setMessage({
+        text: 'Passout year must be a valid 4-digit year (e.g., 2023).',
+        type: 'error',
+      })
+      return false
+    }
+
+    if (
+      !formData.name ||
+      !formData.phone ||
+      !formData.location ||
+      !formData.linkedin ||
+      !formData.github
+    ) {
+      setMessage({
+        text: 'Please fill in all required fields.',
+        type: 'error',
+      })
+      return false
+    }
+
+    if (enforceFaceVerification && (!profilePicture || !webcamImage)) {
+      setMessage({
+        text: 'Both profile picture and webcam image are required for verification.',
+        type: 'error',
+      })
+      return false
+    }
+
+    return true
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
     setIsLoading(true)
     setMessage({ text: '', type: '' })
 
-    // Validate passout_year
-    if (formData.passout_year && !/^\d{4}$/.test(formData.passout_year)) {
-      setMessage({
-        text: 'Passout year must be a valid 4-digit year',
-        type: 'error',
-      })
+    if (!validateForm()) {
       setIsLoading(false)
       return
-    }
-
-    if (enforceFaceVerification && (!profilePicture || !webcamImage)) {
-      console.warn('⚠️ Face verification is required but missing images.', {
-        profilePicture: !!profilePicture,
-        webcamImage: !!webcamImage,
-      })
-      setMessage({
-        text: 'Both profile picture and webcam image are required for verification.',
-        type: 'error',
-      })
-      setIsLoading(false)
-      return
-    } else {
-      console.log('✅ Face verification check passed.', {
-        enforceFaceVerification,
-        profilePicture: !!profilePicture,
-        webcamImage: !!webcamImage,
-      })
     }
 
     const data = new FormData()
     for (const key in formData) {
       if (key !== 'resume') {
-        data.append(key, formData[key])
+        data.append(key === 'branch_id' ? 'degree_branch' : key, formData[key])
       }
     }
     if (resume) data.append('resume', resume)
     if (profilePicture) data.append('profile_picture', profilePicture)
     if (webcamImage) data.append('webcam_image', webcamImage)
-    data.append('enforce_face_verification', enforceFaceVerification) // ✅ Add this
+    data.append('enforce_face_verification', enforceFaceVerification)
 
     try {
       const response = await fetch(`${baseUrl}/candidate/profile/${user.id}`, {
@@ -313,21 +340,6 @@ const CompleteProfile = () => {
 
       const result = await response.json()
       if (response.ok) {
-        console.log('✅ Profile updated successfully!')
-        console.log('📸 Face Verification Result:', result.face_verification)
-        if (result.face_verification) {
-          console.log(
-            `🔍 Similarity Score: ${result.face_verification.similarity}%`
-          )
-          console.log(
-            `🎯 Verification ${
-              result.face_verification.verified ? '✅ successful' : '❌ failed'
-            }`
-          )
-        } else {
-          console.log('ℹ️ No face verification performed by backend.')
-        }
-
         setMessage({
           text: `Profile updated successfully! ${
             result.face_verification
@@ -338,10 +350,6 @@ const CompleteProfile = () => {
         })
         setTimeout(() => navigate('/candidate/dashboard'), 1500)
       } else {
-        console.error(
-          '❌ Profile update failed:',
-          result.error || 'Unknown error'
-        )
         setMessage({
           text:
             result.error ||
@@ -361,20 +369,21 @@ const CompleteProfile = () => {
     }
   }
 
-  if (!candidate)
+  if (!candidate) {
     return (
       <div className="flex justify-center items-center min-h-screen bg-gray-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800">
         <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
       </div>
     )
+  }
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-gray-900 dark:via-slate-900 dark:to-indigo-950 flex flex-col font-[Inter]">
       <Navbar />
-      <div className="flex-grow py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-8">
-            <div className="relative mx-auto w-24 h-24 mb-4 group">
+      <div className="flex-grow py-10 px-2 sm:px-10 lg:px-24">
+        <div className="max-w-7xl mx-auto bg-white dark:bg-gray-900 rounded-2xl shadow-md border border-gray-200 dark:border-gray-800 flex flex-col md:flex-row">
+          <div className="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-800 p-10 flex flex-col items-center gap-8">
+            <div className="relative w-28 h-28 mb-4 group">
               <div className="w-full h-full rounded-full overflow-hidden border-4 border-indigo-500 dark:border-indigo-600 group-hover:border-indigo-600 dark:group-hover:border-indigo-500 shadow-sm transition-all">
                 {profilePreview ? (
                   <img
@@ -403,44 +412,104 @@ const CompleteProfile = () => {
                 />
               </label>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-              {candidate.is_profile_complete
-                ? 'Edit Your Profile'
-                : 'Complete Your Profile'}
-            </h1>
-            <p className="text-base text-gray-700 dark:text-gray-200">
-              {candidate.is_profile_complete
-                ? 'Update your details to keep your profile current and access more job opportunities'
-                : 'Fill in your details to get the most out of our platform'}
-            </p>
-            {enforceFaceVerification && (
-              <p className="text-base text-red-500 font-semibold mt-2">
-                Face verification required due to location change.
+            <div className="text-center">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                {formData.name || 'Your Name'}
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-300">
+                {candidate?.email || user?.email}
               </p>
-            )}
-          </div>
-
-          {message.text && (
-            <div
-              className={`mb-6 p-3 rounded-md flex items-center text-base ${
-                message.type === 'success'
-                  ? 'bg-green-50 dark:bg-green-900/30 border-l-4 border-green-500 text-green-700 dark:text-green-300'
-                  : 'bg-red-50 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300'
-              }`}
-            >
-              {message.type === 'success' ? (
-                <Check className="w-4 h-4 mr-2" />
-              ) : (
-                <X className="w-4 h-4 mr-2" />
-              )}
-              {message.text}
             </div>
-          )}
-
-          <div className="bg-white dark:bg-gray-900 p-6 sm:p-8 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800">
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="col-span-2">
+            <div className="mt-8 w-full">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">
+                My Email Address
+              </h3>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/30">
+                  <svg
+                    className="w-4 h-4 text-indigo-600 dark:text-indigo-300"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M4 4h16v16H4z" stroke="none" />
+                    <path d="M22 6l-10 7L2 6" />
+                  </svg>
+                </span>
+                <span className="text-sm text-gray-700 dark:text-gray-200">
+                  {candidate?.email || user?.email}
+                </span>
+              </div>
+            </div>
+            <div className="w-full mt-6">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">
+                Top Skills
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {candidate?.skills && candidate.skills.length > 0 ? (
+                  candidate.skills.slice(0, 5).map(({ skill_name }, i) => (
+                    <span
+                      key={skill_name}
+                      className={`px-3 py-1 rounded-full text-sm font-medium bg-gradient-to-r ${
+                        [
+                          'from-blue-400 to-indigo-600',
+                          'from-purple-400 to-indigo-600',
+                          'from-green-400 to-emerald-600',
+                          'from-yellow-400 to-amber-600',
+                          'from-red-400 to-rose-600',
+                        ][i % 5]
+                      } text-white`}
+                    >
+                      {skill_name}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
+                    No skills added yet.
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="w-full md:w-2/3 p-10">
+            <div className="mb-10">
+              <h1 className="text-3xl md:text-4xl font-extrabold mb-3 tracking-tight flex items-center gap-3 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent">
+                {candidate.is_profile_complete
+                  ? 'Edit Your Profile'
+                  : 'Complete Your Profile'}
+                <span className="inline-block animate-pulse">👤</span>
+              </h1>
+              <p className="text-lg text-gray-700 dark:text-gray-200 font-medium">
+                {candidate.is_profile_complete
+                  ? 'Update your details to keep your profile current and access more job opportunities'
+                  : 'Fill in your details to get the most out of our platform'}
+              </p>
+              {enforceFaceVerification && (
+                <p className="text-base text-red-500 font-semibold mt-2">
+                  Face verification required due to location change.
+                </p>
+              )}
+            </div>
+            {message.text && (
+              <div
+                className={`mb-6 p-3 rounded-md flex items-center text-base ${
+                  message.type === 'success'
+                    ? 'bg-green-50 dark:bg-green-900/30 border-l-4 border-green-500 text-green-700 dark:text-green-300'
+                    : 'bg-red-50 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300'
+                }`}
+              >
+                {message.type === 'success' ? (
+                  <Check className="w-4 h-4 mr-2" />
+                ) : (
+                  <X className="w-4 h-4 mr-2" />
+                )}
+                {message.text}
+              </div>
+            )}
+            <form onSubmit={handleSubmit} className="space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8">
+                <div>
                   <label
                     htmlFor="name"
                     className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
@@ -448,6 +517,7 @@ const CompleteProfile = () => {
                     <span className="flex items-center">
                       <User className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
                       Full Name
+                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
                   <input
@@ -469,6 +539,7 @@ const CompleteProfile = () => {
                     <span className="flex items-center">
                       <Phone className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
                       Phone Number
+                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
                   <input
@@ -479,6 +550,7 @@ const CompleteProfile = () => {
                     placeholder="+1234567890"
                     value={formData.phone}
                     onChange={handleChange}
+                    required
                   />
                 </div>
                 <div>
@@ -489,6 +561,7 @@ const CompleteProfile = () => {
                     <span className="flex items-center">
                       <MapPin className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
                       Location
+                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
                   <input
@@ -499,6 +572,7 @@ const CompleteProfile = () => {
                     placeholder="New York, NY"
                     value={formData.location}
                     onChange={handleChange}
+                    required
                   />
                 </div>
                 <div>
@@ -509,6 +583,7 @@ const CompleteProfile = () => {
                     <span className="flex items-center">
                       <Linkedin className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
                       LinkedIn Profile
+                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
                   <input
@@ -519,6 +594,7 @@ const CompleteProfile = () => {
                     placeholder="https://linkedin.com/in/johndoe"
                     value={formData.linkedin}
                     onChange={handleChange}
+                    required
                   />
                 </div>
                 <div>
@@ -529,6 +605,7 @@ const CompleteProfile = () => {
                     <span className="flex items-center">
                       <Github className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
                       GitHub Profile
+                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
                   <input
@@ -539,6 +616,7 @@ const CompleteProfile = () => {
                     placeholder="https://github.com/johndoe"
                     value={formData.github}
                     onChange={handleChange}
+                    required
                   />
                 </div>
                 <div>
@@ -549,6 +627,7 @@ const CompleteProfile = () => {
                     <span className="flex items-center">
                       <GraduationCap className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
                       Degree
+                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
                   <Select
@@ -602,19 +681,21 @@ const CompleteProfile = () => {
                 </div>
                 <div>
                   <label
-                    htmlFor="degree_branch"
+                    htmlFor="branch_id"
                     className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
                   >
                     <span className="flex items-center">
                       <GraduationCap className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
                       Branch/Specialization
+                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
+                  {console.log(formData)}
                   <Select
                     options={branches}
                     value={
                       branches.find(
-                        (option) => option.value === formData.degree_branch
+                        (option) => option.value === formData.branch_id
                       ) || null
                     }
                     onChange={handleBranchChange}
@@ -656,6 +737,7 @@ const CompleteProfile = () => {
                         primary25: '#e0e7ff',
                       },
                     })}
+                    required
                   />
                 </div>
                 <div>
@@ -666,6 +748,7 @@ const CompleteProfile = () => {
                     <span className="flex items-center">
                       <Calendar className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
                       Passout Year
+                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
                   <input
@@ -678,6 +761,7 @@ const CompleteProfile = () => {
                     onChange={handleChange}
                     min="1900"
                     max={new Date().getFullYear() + 5}
+                    required
                   />
                 </div>
                 <div>
@@ -688,6 +772,7 @@ const CompleteProfile = () => {
                     <span className="flex items-center">
                       <Briefcase className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
                       Years of Experience
+                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
                   <input
@@ -699,10 +784,11 @@ const CompleteProfile = () => {
                     placeholder="3.5"
                     value={formData.years_of_experience}
                     onChange={handleChange}
+                    min="0"
                     required
                   />
                 </div>
-                <div className="col-span-2">
+                <div className="md:col-span-2">
                   <label
                     htmlFor="resume"
                     className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
@@ -710,13 +796,14 @@ const CompleteProfile = () => {
                     <span className="flex items-center">
                       <FileText className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
                       Resume (PDF)
+                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
-                  <div className="w-full flex justify-between items-center sm:flex-col md:flex-row">
+                  <div className="w-full flex flex-col sm:flex-row gap-2 items-start sm:items-center">
                     {formData.resume && (
                       <LinkButton
                         variant="link"
-                        to={`http://localhost:5000/static/uploads/${formData.resume}`}
+                        to={`https://storage.googleapis.com/gen-ai-quiz/uploads/${formData.resume}`}
                         className="text-base text-indigo-600 dark:text-indigo-300 hover:underline"
                         target="_blank"
                       >
@@ -730,10 +817,11 @@ const CompleteProfile = () => {
                       className="w-content text-base text-gray-700 dark:text-gray-200 file:mr-4 file:py-1 file:px-4 file:rounded-md file:border-0 file:text-base file:font-medium file:bg-indigo-50 dark:file:bg-indigo-900/30 file:text-indigo-700 dark:file:text-indigo-300 hover:file:bg-indigo-100 dark:hover:file:bg-indigo-800/30"
                       accept=".pdf"
                       onChange={handleFileChange}
+                      required={!formData.resume}
                     />
                   </div>
                 </div>
-                <div className="col-span-2">
+                <div className="md:col-span-2">
                   <label
                     htmlFor="webcam_image"
                     className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
@@ -741,59 +829,81 @@ const CompleteProfile = () => {
                     <span className="flex items-center">
                       <Camera className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
                       Webcam Image
+                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
-                  <div className="space-y-2">
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      className={`w-full max-w-md m-auto rounded-md ${
-                        isWebcamActive ? '' : 'hidden'
-                      }`}
-                    />
-                    <canvas ref={canvasRef} className="hidden" />
-                    {webcamPreview && (
-                      <img
-                        src={webcamPreview}
-                        alt="Webcam preview"
-                        className="w-full max-w-md rounded-md mt-2 m-auto"
-                      />
-                    )}
-                    {!isWebcamActive ? (
-                      <Button
-                        type="button"
-                        variant="primary"
-                        onClick={startWebcam}
-                      >
-                        Start Webcam
-                      </Button>
-                    ) : (
-                      <div className="flex gap-2 justify-center w-full">
-                        <Button
+                  <div className="flex flex-col md:flex-row md:items-start gap-6">
+                    <div className="flex flex-col items-start min-w-[140px]">
+                      {!isWebcamActive ? (
+                        <button
                           type="button"
-                          variant="primary"
-                          onClick={captureWebcamImage}
+                          onClick={startWebcam}
+                          className="mt-0 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
                         >
-                          Capture Image
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          onClick={stopWebcam}
-                        >
-                          Stop Webcam
-                        </Button>
-                      </div>
-                    )}
+                          <Camera className="w-4 h-4 mr-2" />
+                          Start Webcam
+                        </button>
+                      ) : (
+                        <div className="flex flex-col gap-2 mt-0">
+                          <button
+                            type="button"
+                            onClick={captureWebcamImage}
+                            className="bg-gradient-to-r from-emerald-600 to-green-600 text-white px-6 py-3 rounded-xl flex items-center hover:from-emerald-700 hover:to-green-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+                          >
+                            <Camera className="w-4 h-4 mr-2" />
+                            Capture Image
+                          </button>
+                          <button
+                            type="button"
+                            onClick={stopWebcam}
+                            className="bg-gradient-to-r from-gray-500 to-gray-600 text-white px-6 py-3 rounded-xl flex items-center hover:from-gray-600 hover:to-gray-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+                          >
+                            Stop Webcam
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 flex flex-row gap-4 justify-center">
+                      {isWebcamActive && (
+                        <div className="bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-md p-3 flex flex-col items-center w-[220px]">
+                          <video
+                            ref={videoRef}
+                            autoPlay
+                            className="rounded-lg shadow-md border border-indigo-200 dark:border-indigo-700 bg-black"
+                            style={{
+                              width: '200px',
+                              height: '150px',
+                              objectFit: 'cover',
+                              background: '#222',
+                            }}
+                          />
+                          <canvas ref={canvasRef} className="hidden" />
+                        </div>
+                      )}
+                      {webcamPreview && (
+                        <div className="bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-md p-3 flex flex-col items-center w-[220px]">
+                          <img
+                            src={webcamPreview}
+                            alt="Webcam preview"
+                            className="rounded-lg shadow-md border border-indigo-200 dark:border-indigo-700"
+                            style={{
+                              width: '200px',
+                              height: '150px',
+                              objectFit: 'cover',
+                              background: '#222',
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-              <div className="flex justify-center mt-6">
-                <Button
+              <div className="flex justify-end mt-10">
+                <button
                   type="submit"
-                  variant="primary"
                   disabled={isLoading}
-                  className="gap-2"
+                  className="gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-8 py-3 rounded-xl flex items-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-60"
                 >
                   {isLoading ? (
                     <>
@@ -806,7 +916,7 @@ const CompleteProfile = () => {
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
-                </Button>
+                </button>
               </div>
             </form>
           </div>

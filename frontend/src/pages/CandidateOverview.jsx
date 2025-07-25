@@ -8,6 +8,13 @@ import {
   Calendar,
   LogOut,
   Verified,
+  Phone,
+  MapPin,
+  Briefcase,
+  FileText,
+  GraduationCap,
+  Linkedin,
+  Github,
 } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import ClockLoader from '../components/ClockLoader'
@@ -16,6 +23,27 @@ import LinkButton from '../components/LinkButton'
 import Button from '../components/Button'
 import { format } from 'date-fns'
 import { baseUrl } from '../utils/utils'
+import { Line } from 'react-chartjs-2'
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title as ChartTitle,
+  Tooltip,
+  Legend,
+} from 'chart.js'
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  ChartTitle,
+  Tooltip,
+  Legend
+)
 
 const getSkillColor = (index) => {
   const colors = [
@@ -26,6 +54,19 @@ const getSkillColor = (index) => {
     'from-red-400 to-rose-600',
   ]
   return `bg-gradient-to-r ${colors[index % colors.length]} text-white`
+}
+
+const getProficiencyLabel = (proficiency) => {
+  switch (proficiency) {
+    case 8:
+      return 'High'
+    case 6:
+      return 'Medium'
+    case 4:
+      return 'Basic'
+    default:
+      return 'Unknown'
+  }
 }
 
 const CandidateOverview = () => {
@@ -78,16 +119,143 @@ const CandidateOverview = () => {
   }
 
   if (!candidate) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-gray-900 dark:to-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-indigo-500 border-t-transparent mx-auto mb-4"></div>
-          <p className="text-gray-900 dark:text-gray-100 text-xl font-medium">
-            Loading dashboard...
-          </p>
-        </div>
-      </div>
+    return <ClockLoader />
+  }
+
+  // Prepare data for skill growth chart
+  let skillGrowthData = null
+  let skillGrowthOptions = null
+
+  if (candidate?.skills && candidate.skills.length > 0) {
+    // Assume each skill object: { skill_id, skill_name, category, proficiency, history: [{date, value}] }
+    // Check if any skill has history data
+    const hasHistory = candidate.skills.some(
+      (skill) => Array.isArray(skill.history) && skill.history.length > 0
     )
+    if (hasHistory) {
+      // If skills have history, plot growth over time for each skill
+      const allDates = Array.from(
+        new Set(
+          candidate.skills.flatMap((skill) =>
+            (skill.history || []).map((h) => h.date)
+          )
+        )
+      ).sort()
+      skillGrowthData = {
+        labels: allDates,
+        datasets: candidate.skills.map((skill, idx) => ({
+          label: `${skill.skill_name} (Current: ${getProficiencyLabel(
+            skill.proficiency
+          )})`,
+          data: allDates.map((date) => {
+            const found = (skill.history || []).find((h) => h.date === date)
+            return found ? found.value : null
+          }),
+          borderColor: [
+            '#6366f1', // indigo
+            '#a21caf', // purple
+            '#059669', // green
+            '#f59e42', // yellow
+            '#ef4444', // red
+          ][idx % 5],
+          backgroundColor: 'rgba(0,0,0,0)',
+          tension: 0.3,
+          spanGaps: true,
+        })),
+      }
+      skillGrowthOptions = {
+        responsive: true,
+        plugins: {
+          legend: { position: 'top' },
+          title: {
+            display: true,
+            text: 'Skill Growth Over Time',
+            font: { size: 18, weight: 'bold' },
+          },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `Level: ${getProficiencyLabel(ctx.parsed.y)}`,
+            },
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 10,
+            title: { display: true, text: 'Proficiency Level' },
+            ticks: {
+              values: [4, 6, 8],
+              callback: (value) => {
+                switch (value) {
+                  case 8:
+                    return 'High'
+                  case 6:
+                    return 'Medium'
+                  case 4:
+                    return 'Basic'
+                  default:
+                    return ''
+                }
+              },
+            },
+          },
+        },
+      }
+    } else {
+      // No history, show current proficiency for each skill
+      skillGrowthData = {
+        labels: candidate.skills.map((s) => s.skill_name),
+        datasets: [
+          {
+            label: 'Current Proficiency',
+            data: candidate.skills.map((s) => s.proficiency || 0),
+            borderColor: '#6366f1',
+            backgroundColor: 'rgba(99,102,241,0.2)',
+            fill: true,
+            tension: 0.3,
+          },
+        ],
+      }
+      skillGrowthOptions = {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          title: {
+            display: true,
+            text: 'Current Skill Proficiency',
+            font: { size: 18, weight: 'bold' },
+          },
+          tooltip: {
+            callbacks: {
+              label: (ctx) =>
+                `${ctx.label}: ${getProficiencyLabel(ctx.parsed.y)}`,
+            },
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 10,
+            title: { display: true, text: 'Proficiency Level' },
+            ticks: {
+              values: [4, 6, 8],
+              callback: (value) => {
+                switch (value) {
+                  case 8:
+                    return 'High'
+                  case 6:
+                    return 'Medium'
+                  case 4:
+                    return 'Basic'
+                  default:
+                    return ''
+                }
+              },
+            },
+          },
+        },
+      }
+    }
   }
 
   return (
@@ -128,7 +296,7 @@ const CandidateOverview = () => {
                 </div>
               </div>
               <h1 className="text-5xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent mb-4">
-                Candidate Overview
+                Welcome back, {candidate.name}!
               </h1>
               <p className="text-gray-600 dark:text-gray-400 text-lg max-w-2xl mx-auto">
                 Explore job opportunities, track your applications, and enhance
@@ -218,52 +386,75 @@ const CandidateOverview = () => {
 
             {/* Candidate Info */}
             <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300">
-              <div className="flex items-center mb-6">
-                <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
-                  <User className="w-8 h-8 text-white" />
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex">
+                  <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
+                    <User className="w-8 h-8 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                      My Profile
+                    </h3>
+                    <p className="text-gray-600 dark:text-gray-400">
+                      Manage your personal details
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
-                    My Profile
-                  </h3>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    Manage your personal details
-                  </p>
-                </div>
+                <LinkButton
+                  to="/candidate/complete-profile"
+                  className="w-fit bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+                >
+                  Edit Profile
+                </LinkButton>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-3">
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <User className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       Name:
                     </span>{' '}
                     {candidate.name}
                   </p>
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <svg
+                      className="w-5 h-5 text-indigo-600 dark:text-indigo-400"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M4 4h16v16H4z" stroke="none" />
+                      <path d="M22 6l-10 7L2 6" />
+                    </svg>
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       Email:
                     </span>{' '}
                     {candidate.email}
                   </p>
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <Phone className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       Phone:
                     </span>{' '}
                     {candidate.phone || 'Not provided'}
                   </p>
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       Location:
                     </span>{' '}
                     {candidate.location || 'Not specified'}
                   </p>
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       Experience:
                     </span>{' '}
                     {candidate.years_of_experience} years
                   </p>
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <Verified className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       Profile Status:
                     </span>{' '}
@@ -279,13 +470,14 @@ const CandidateOverview = () => {
                         : 'Incomplete'}
                     </span>
                   </p>
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       Resume:
                     </span>{' '}
                     {candidate.resume ? (
                       <a
-                        href={`http://localhost:5000/static/uploads/${candidate.resume}`}
+                        href={`https://storage.googleapis.com/gen-ai-quiz/uploads/${candidate.resume}`}
                         className="text-indigo-600 dark:text-indigo-400 hover:underline"
                         target="_blank"
                         rel="noopener noreferrer"
@@ -298,25 +490,29 @@ const CandidateOverview = () => {
                   </p>
                 </div>
                 <div className="flex flex-col gap-3">
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <GraduationCap className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       Degree:
                     </span>{' '}
                     {candidate.degree || 'Not specified'}
                   </p>
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <GraduationCap className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       Branch:
                     </span>{' '}
                     {candidate.degree_branch || 'Not specified'}
                   </p>
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       Passout Year:
                     </span>{' '}
                     {candidate.passout_year || 'Not specified'}
                   </p>
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <Linkedin className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       LinkedIn:
                     </span>{' '}
@@ -333,7 +529,8 @@ const CandidateOverview = () => {
                       'Not provided'
                     )}
                   </p>
-                  <p className="text-base text-gray-600 dark:text-gray-400">
+                  <p className="text-base text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                    <Github className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
                     <span className="font-medium text-gray-900 dark:text-gray-100">
                       GitHub:
                     </span>{' '}
@@ -350,12 +547,6 @@ const CandidateOverview = () => {
                       'Not provided'
                     )}
                   </p>
-                  <LinkButton
-                    to="/candidate/complete-profile"
-                    className="w-fit bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
-                  >
-                    Edit Profile
-                  </LinkButton>
                 </div>
               </div>
               {!candidate.is_profile_complete && (
@@ -369,6 +560,18 @@ const CandidateOverview = () => {
                 </div>
               )}
             </div>
+
+            {/* Skill Growth/Proficiency Chart */}
+            {skillGrowthData && (
+              <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300">
+                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
+                  Skill Growth & Proficiency
+                </h3>
+                <div className="h-80">
+                  <Line data={skillGrowthData} options={skillGrowthOptions} />
+                </div>
+              </div>
+            )}
 
             {/* Available Jobs */}
             <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300">
@@ -394,9 +597,9 @@ const CandidateOverview = () => {
                     >
                       {assessment.logo && (
                         <img
-                          src={`http://localhost:5000/static/uploads/${assessment.logo}`}
+                          src={`https://storage.googleapis.com/gen-ai-quiz/uploads/${assessment.logo}`}
                           alt="Company Logo"
-                          className="w-full h-32 object-contain rounded-lg mb-4"
+                          className="w-full h-32 object-cover rounded-xl mb-4 border border-gray-200/50 dark:border-gray-700/50"
                         />
                       )}
                       <h4 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
@@ -448,7 +651,7 @@ const CandidateOverview = () => {
               )}
             </div>
 
-            {/* attempted_assessments Jobs */}
+            {/* Attempted Jobs */}
             <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300">
               <div className="flex items-center mb-6">
                 <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
@@ -456,7 +659,7 @@ const CandidateOverview = () => {
                 </div>
                 <div>
                   <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
-                    attempted_assessments Jobs
+                    Attempted Jobs
                   </h3>
                   <p className="text-gray-600 dark:text-gray-400">
                     Review your job applications
@@ -502,7 +705,7 @@ const CandidateOverview = () => {
                 </div>
               ) : (
                 <p className="text-base text-gray-600 dark:text-gray-400 text-center">
-                  No attempted_assessments jobs yet.
+                  No attempted jobs yet.
                 </p>
               )}
             </div>
@@ -554,7 +757,7 @@ const CandidateOverview = () => {
               className="w-24 h-24 rounded-full mx-auto object-cover border-4 border-indigo-600 dark:border-indigo-400"
               src={
                 candidate.profile_picture
-                  ? `http://localhost:5000/static/uploads/${candidate.profile_picture}`
+                  ? `https://storage.googleapis.com/gen-ai-quiz/uploads/${candidate.profile_picture}`
                   : 'https://via.placeholder.com/96'
               }
               alt="Profile"
@@ -579,14 +782,14 @@ const CandidateOverview = () => {
               </h4>
               <div className="flex flex-wrap gap-2 mt-2 justify-center">
                 {candidate.skills?.length > 0 ? (
-                  candidate.skills.map(({ skill_name }, i) => (
+                  candidate.skills.map(({ skill_name, proficiency }, i) => (
                     <span
                       key={skill_name}
                       className={`px-3 py-1 rounded-full text-sm font-medium ${getSkillColor(
                         i
                       )}`}
                     >
-                      {skill_name}
+                      {skill_name} ({getProficiencyLabel(proficiency)})
                     </span>
                   ))
                 ) : (

@@ -34,6 +34,34 @@ def get_plans():
         logger.error(f"Failed to fetch plans: {str(e)}", exc_info=True)
         raise ValueError(f"Failed to fetch plans: {str(e)}")
 
+@subscriptions_bp.route('/plan/<int:user_id>', methods=['GET'])
+def get_recruiter_assessments(user_id):
+    try:
+        recruiter = Recruiter.query.filter_by(user_id=user_id).first()
+        if not recruiter:
+            logger.error(f"Recruiter not found for user_id: {user_id}")
+            return jsonify({'error': 'Recruiter not found'}), 404
+
+        subscription_plan = SubscriptionPlan.query.get(recruiter.subscription_plan_id) if recruiter.subscription_plan_id else None
+
+        return jsonify([{
+            'company': recruiter.company,
+            'logo': recruiter.logo,
+            'subscription_plan': {
+                'name': subscription_plan.name if subscription_plan else 'None',
+                'candidate_limit': subscription_plan.candidate_limit if subscription_plan else 0,
+                'assessment_limit': subscription_plan.assessment_limit if subscription_plan else 0,
+                'ai_reports': subscription_plan.ai_reports if subscription_plan else False,
+                'start_date': recruiter.subscription_start_date.isoformat() if recruiter.subscription_start_date else None,
+                'end_date': recruiter.subscription_end_date.isoformat() if recruiter.subscription_end_date else None,
+                'current_candidate_count': recruiter.current_candidate_count,
+                'current_assessment_count': recruiter.current_assessment_count
+            }
+        }])
+    except Exception as e:
+        logger.error(f"Failed to fetch recruiter data: {str(e)}", exc_info=True)
+        return jsonify({'error': f"Failed to fetch recruiter data: {str(e)}"}), 500
+
 @subscriptions_bp.route('/create-order', methods=['POST'])
 def create_order():
     try:
@@ -45,8 +73,9 @@ def create_order():
         if not recruiter:
             logger.error(f"Recruiter not found for user_id: {user_id}")
             return jsonify({'error': 'Recruiter not found'}), 404
+
         
-        if recruiter.subscription_end_date and recruiter.subscription_end_date > datetime.utcnow():
+        if recruiter.subscription_plan_id != 1 and recruiter.subscription_end_date and recruiter.subscription_end_date > datetime.utcnow():
             logger.error(f"Recruiter {recruiter.user_id} already has an active subscription")
             return jsonify({'error': 'Recruiter already has an active subscription'}), 400
 

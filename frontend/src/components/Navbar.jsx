@@ -116,7 +116,7 @@ const Navbar = ({
                   </span>
                   {user.profile_img ? (
                     <img
-                      src={`http://localhost:5000/static/uploads/${user.profile_img}`}
+                      src={`https://storage.googleapis.com/gen-ai-quiz/uploads/${user.profile_img}`}
                       alt="Profile"
                       className="h-8 w-8 rounded-full object-cover border-2 border-indigo-200 dark:border-indigo-600"
                     />

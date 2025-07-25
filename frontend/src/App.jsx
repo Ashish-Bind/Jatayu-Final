@@ -42,7 +42,7 @@ export default function App() {
       <Routes>
         {/* Public routes */}
         <Route path="/" element={<Home />} />
-
+        TODO: Seperate reset & forgot password
         <Route element={<AuthRoute />}>
           <Route path="/candidate/login" element={<CandidateLogin />} />
           <Route path="/candidate/signup" element={<CandidateSignup />} />
@@ -53,15 +53,12 @@ export default function App() {
           <Route path="/candidate/reset-password" element={<ResetPassword />} />
           <Route path="/candidate/confirm" element={<CandidateConfirm />} />
         </Route>
-
         <Route element={<AuthRoute redirectPath="/recruiter/dashboard" />}>
           <Route path="/recruiter/login" element={<RecruiterLogin />} />
         </Route>
-
         <Route element={<AuthRoute redirectPath="/superadmin/dashboard" />}>
           <Route path="/superadmin/login" element={<SuperadminLogin />} />
         </Route>
-
         <Route
           element={
             <ProtectedRoute allowedRoles={['candidate']} redirectPath="/" />
@@ -78,7 +75,6 @@ export default function App() {
           />
           <Route path="results" element={<AssessmentResults />} />
         </Route>
-
         <Route
           element={
             <ProtectedRoute allowedRoles={['recruiter']} redirectPath="/" />
@@ -97,7 +93,6 @@ export default function App() {
             element={<CandidateProctoring />}
           />
         </Route>
-
         <Route
           element={
             <ProtectedRoute allowedRoles={['superadmin']} redirectPath="/" />

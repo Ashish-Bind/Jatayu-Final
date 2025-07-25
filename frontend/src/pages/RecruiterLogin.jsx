@@ -9,15 +9,12 @@ const RecruiterLogin = () => {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
 
-  const { user, recruiterLogin, loading } = useAuth()
+  const { user, recruiterLogin } = useAuth()
 
   console.log(user)
-
-  if (loading) {
-    return <div>Loading...</div>
-  }
 
   if (user) {
     navigate('/recruiter/dashboard')
@@ -27,6 +24,7 @@ const RecruiterLogin = () => {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
+    setLoading(true)
 
     try {
       const response = await recruiterLogin(email, password)
@@ -38,6 +36,8 @@ const RecruiterLogin = () => {
       }
     } catch (err) {
       setError('An error occurred during login')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -106,6 +106,17 @@ const RecruiterLogin = () => {
                     onChange={(e) => setPassword(e.target.value)}
                     value={password}
                   />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="text-base">
+                  <Link
+                    to="/candidate/forgot-password"
+                    className="font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 transition-all duration-200"
+                  >
+                    Forgot your password?
+                  </Link>
                 </div>
               </div>
 

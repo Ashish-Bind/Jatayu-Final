@@ -20,7 +20,7 @@ class User(db.Model):
         return check_password_hash(self.password_hash, password)
     
 class PasswordResetToken(db.Model):
-    _tablename_ = 'password_reset_tokens'
+    __tablename__ = 'password_reset_tokens'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     token = db.Column(db.String(255), unique=True, nullable=False)
