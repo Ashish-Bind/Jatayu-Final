@@ -4,7 +4,6 @@ from datetime import datetime, timezone, timedelta
 import random
 import os
 from pathlib import Path
-import cv2
 import numpy as np
 from app import db
 from app.models.candidate import Candidate
@@ -20,10 +19,11 @@ from app.models.proctoring_violation import ProctoringViolation
 from app.services.question_batches import generate_single_question
 from google.cloud import storage
 from app.utils.gcs_upload import upload_to_gcs
-from deepface import DeepFace
+from app.utils.face import compare_faces_from_files
+from io import BytesIO
 import timeout_decorator
 import google.api_core.exceptions
-import json
+import requests
 
 assessment_api_bp = Blueprint('assessment_api', __name__, url_prefix='/api/assessment')
 
@@ -120,35 +120,27 @@ def get_base_band(candidate_exp, jd_range):
         logger.error(f"Error in get_base_band for candidate_exp={candidate_exp}, jd_range={jd_range}: {str(e)}")
         raise
 
-def compare_images(snapshot_path, candidate_image_path):
-    """Compare snapshot with candidate's profile image using DeepFace."""
+
+def compare_images(snapshot_url, profile_url):
     try:
-        # snapshot_path = os.path.normpath(snapshot_path)
-        # candidate_image_path = os.path.normpath(candidate_image_path)
+        snapshot_res = requests.get(snapshot_url, timeout=5)
+        profile_res = requests.get(profile_url, timeout=5)
 
-        # if not os.path.exists(snapshot_path):
-        #     return False, f"Snapshot file does not exist: {snapshot_path}"
-        # if not os.path.exists(candidate_image_path):
-        #     return False, f"Candidate profile image does not exist: {candidate_image_path}"
+        if snapshot_res.status_code != 200 or profile_res.status_code != 200:
+            return False, "❌ Failed to download one or both images from GCS"
 
-        try:
-            DeepFace.extract_faces(img_path=snapshot_path, enforce_detection=False)
-            DeepFace.extract_faces(img_path=candidate_image_path, enforce_detection=False)
-        except Exception as e:
-            return False, f"No valid human face detected: {str(e)}. Consider checking image quality or camera setup."
+        snapshot_file = BytesIO(snapshot_res.content)
+        profile_file = BytesIO(profile_res.content)
 
-        result = DeepFace.verify(
-            img1_path=candidate_image_path,
-            img2_path=snapshot_path,
-            model_name="SFace",
-            enforce_detection=False
-        )
-        if result['verified']:
-            return True, f"✅ Faces match (distance={result['distance']:.4f}, threshold={result['threshold']:.4f})"
+        result = compare_faces_from_files(profile_file, snapshot_file)
+
+        if result["verified"]:
+            return True, f"✅ Faces match (confidence={result['confidence']})"
         else:
-            return False, f"❌ Faces do NOT match (distance={result['distance']:.4f}, threshold={result['threshold']:.4f})"
+            return False, f"❌ Faces do NOT match (confidence={result['confidence']})"
+
     except Exception as e:
-        return False, f"Face verification failed: {str(e)}"
+        return False, f"Face comparison failed: {str(e)}"
 
 def save_assessment_state(attempt_id, state):
     """Save assessment state to database."""
@@ -453,12 +445,6 @@ def get_next_question(attempt_id):
                     is_match, remark = compare_images(snapshot_path, profile_image_path)
                     proctoring_data["remarks"].append(f"Snapshot at {snapshot['timestamp']}: {remark}")
                     snapshot["is_valid"] = is_match
-                    # Optional cleanup
-                    # try:
-                    #     if os.path.exists(snapshot_path):
-                    #         os.remove(snapshot_path)
-                    # except Exception as e:
-                    #     logger.error(f"Failed to delete snapshot {snapshot_path}: {str(e)}")
             else:
                 proctoring_data["remarks"].append("No candidate profile image available for comparison")
 
@@ -647,11 +633,6 @@ def end_assessment(attempt_id):
                 is_match, remark = compare_images(snapshot_path, profile_image_path)
                 proctoring_data["remarks"].append(f"Snapshot at {snapshot['timestamp']}: {remark}")
                 snapshot["is_valid"] = is_match
-                # try:
-                #     if os.path.exists(snapshot_path):
-                #         os.remove(snapshot_path)
-                # except Exception as e:
-                #     logger.error(f"Failed to delete snapshot {snapshot_path}: {str(e)}")
         else:
             proctoring_data["remarks"].append("No candidate profile image available for comparison")
 

@@ -2,7 +2,6 @@ from flask import Blueprint, jsonify, request, session
 import os
 import re
 import difflib
-from deepface import DeepFace
 from app import db
 from app.models.candidate import Candidate
 from app.models.job import JobDescription
@@ -19,6 +18,7 @@ from app.models.recruiter import Recruiter
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime, timezone
 from app.utils.gcs_upload import upload_to_gcs, delete_from_gcs
+from app.utils.face import compare_faces_from_files
 import pytz
 import google.generativeai as genai
 import logging
@@ -274,51 +274,26 @@ def infer_proficiency(skill, work_experience, education, projects):
         proficiency = 4
     return proficiency
 
-def verify_faces(profile_pic_file, webcam_image_file):
-    """Verify if the faces in the two images match with at least 70% similarity."""
+def verify_faces(profile_file, webcam_file):
     try:
-        timestamp = str(int(datetime.now(timezone.utc).timestamp()))
-        profile_path = f"temp/profile_{timestamp}.jpg"
-        webcam_path = f"temp/webcam_{timestamp}.jpg"
+        result = compare_faces_from_files(profile_file, webcam_file)
 
-        # Upload both to GCS
-        profile_url = upload_to_gcs(
-            file_obj=profile_pic_file,
-            destination_path=profile_path,
-            content_type='image/jpeg'
-        )
+        confidence = result.get("confidence")
 
-        webcam_url = upload_to_gcs(
-            file_obj=webcam_image_file,
-            destination_path=webcam_path,
-            content_type='image/jpeg'
-        )
+        if confidence is not None:
+            similarity = max(0.0, 100 - float(confidence))
+        else:
+            similarity = 0.0
 
-        # Run verification directly on public URLs
-        result = DeepFace.verify(
-            img1_path=profile_url,
-            img2_path=webcam_url,
-            model_name='Facenet',
-            distance_metric='cosine',
-            enforce_detection=True
-        )
-
-        # Optional: Clean up GCS temp images
-        delete_from_gcs(profile_path)
-        delete_from_gcs(webcam_path)
-
-        verified = result['verified']
-        distance = result['distance']
-        similarity_percentage = (1 - distance) * 100
-        print(f"Face verification: {similarity_percentage:.2f}% similarity")
-        print(f"Face verification {'successful' if verified and distance <= 0.4 else 'failed'}")
         return {
-            'verified': verified and distance <= 0.4,
-            'similarity': round(similarity_percentage, 2)
+            'verified': result.get("verified", False),
+            'similarity': round(similarity, 2)
         }
+
     except Exception as e:
-        print(f"Face verification failed: {str(e)}")
+        print("Face comparison error:", str(e))
         return {'verified': False, 'similarity': 0.0}
+
 
 @candidate_api_bp.route('/profile/<int:user_id>', methods=['GET'])
 def get_profile_by_user(user_id):
@@ -360,7 +335,7 @@ def verify_face():
     try:
         webcam_image_file = request.files.get('webcam_image')
 
-        if 'user_id' not in session  or not webcam_image_file:
+        if 'user_id' not in session or not webcam_image_file:
             return jsonify({'success': False, 'error': 'No user logged in or webcam image'}), 400
 
         # Fetch user and profile picture
@@ -368,16 +343,16 @@ def verify_face():
         if not candidate or not candidate.profile_picture:
             return jsonify({'success': False, 'error': 'User or profile picture not found'}), 404
 
-        if not candidate.profile_picture:
-            return jsonify({'success': False, 'error': 'No profile picture'}), 400
-
-        
         profile_image_url = f'https://storage.googleapis.com/gen-ai-quiz/uploads/{candidate.profile_picture}'
         response = requests.get(profile_image_url)
         profile_image = BytesIO(response.content)
         profile_image.name = 'profile.jpg'
 
-        # Call DeepFace verify
+        # Ensure file pointers are reset
+        profile_image.seek(0)
+        webcam_image_file.seek(0)
+
+        # Call custom face comparison
         result = verify_faces(profile_image, webcam_image_file)
 
         return jsonify({
@@ -388,6 +363,7 @@ def verify_face():
     except Exception as e:
         print("Face verification API error:", str(e))
         return jsonify({'success': False, 'error': str(e)}), 500
+    
 @candidate_api_bp.route('/degrees', methods=['GET'])
 def get_degrees():
     """Retrieve the list of available degrees."""

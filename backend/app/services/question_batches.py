@@ -5,14 +5,25 @@ import threading
 import functools
 import hashlib
 import time
-import numpy as np
 from flask import current_app
-from sentence_transformers import SentenceTransformer
+import importlib
 import google.generativeai as genai
 from google.api_core.exceptions import TooManyRequests
 from app import db
 from app.models.skill import Skill
 from app.models.mcq import MCQ
+from nltk.tokenize import word_tokenize
+from nltk.corpus import stopwords
+import string
+
+# Jaccard similarity function for question uniqueness
+stop_words = set(stopwords.words('english'))
+def jaccard_similarity(text1, text2):
+    tokens1 = {w.lower() for w in word_tokenize(text1) if w.lower() not in stop_words and w not in string.punctuation}
+    tokens2 = {w.lower() for w in word_tokenize(text2) if w.lower() not in stop_words and w not in string.punctuation}
+    intersection = len(tokens1 & tokens2)
+    union = len(tokens1 | tokens2)
+    return intersection / union if union > 0 else 0
 
 # Cross-platform timeout implementation
 class TimeoutError(Exception):
@@ -60,7 +71,6 @@ generation_config = {
 model_gemini = genai.GenerativeModel(
     model_name="gemini-1.5-flash", generation_config=generation_config
 )
-embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
 
 def divide_experience_range(jd_range):
     start, end = map(float, jd_range.split("-"))
@@ -284,17 +294,13 @@ def generate_single_question_with_timeout(skill_name, difficulty_band, job_id, j
                     continue
                 
                 question_content = f"{parsed['question']} {' '.join(parsed['options'])}"
-                question_embedding = embedding_model.encode(question_content)
                 is_unique = True
                 for q in previous_questions:
                     if 'question' in q and 'options' in q:
                         prev_content = f"{q['question']} {' '.join(q['options'])}"
-                        prev_embedding = embedding_model.encode(prev_content)
-                        similarity = np.dot(question_embedding, prev_embedding) / (
-                            np.linalg.norm(question_embedding) * np.linalg.norm(prev_embedding)
-                        )
-                        if similarity > 0.8:
-                            print(f"⚠️ Generated question too similar to previous (similarity: {similarity:.2f}). Retrying...")
+                        similarity = jaccard_similarity(question_content, prev_content)
+                        if similarity > 0.5:  # Adjusted threshold for Jaccard
+                            print(f"⚠️ Generated question too similar to previous (Jaccard: {similarity:.2f}). Retrying...")
                             is_unique = False
                             break
                 if not is_unique:
@@ -357,22 +363,15 @@ def get_prestored_question(skill_name, difficulty_band, job_id, used_questions=N
             print(f"⚠️ No unused pre-stored questions found for {skill_name} ({difficulty_band})")
             return None
         
-        used_embeddings = []
-        for q in (used_questions or []):
-            if 'question' in q and 'options' in q:
-                content = f"{q['question']} {' '.join(q['options'])}"
-                used_embeddings.append((q['mcq_id'], embedding_model.encode(content)))
+        used_contents = [(q['mcq_id'], f"{q['question']} {' '.join(q['options'])}") for q in (used_questions or []) if 'question' in q and 'options' in q]
         
         for mcq in available_mcqs:
             content = f"{mcq.question} {mcq.option_a} {mcq.option_b} {mcq.option_c} {mcq.option_d}"
-            mcq_embedding = embedding_model.encode(content)
             is_unique = True
-            for used_id, used_embedding in used_embeddings:
-                similarity = np.dot(mcq_embedding, used_embedding) / (
-                    np.linalg.norm(mcq_embedding) * np.linalg.norm(used_embedding)
-                )
-                if similarity > 0.8:
-                    print(f"⚠️ Pre-stored question ID {mcq.mcq_id} too similar to used question ID {used_id} (similarity: {similarity:.2f})")
+            for used_id, used_content in used_contents:
+                similarity = jaccard_similarity(content, used_content)
+                if similarity > 0.5:  # Adjusted threshold for Jaccard
+                    print(f"⚠️ Pre-stored question ID {mcq.mcq_id} too similar to used question ID {used_id} (Jaccard: {similarity:.2f})")
                     is_unique = False
                     break
             if is_unique:
@@ -407,17 +406,13 @@ def generate_single_question(skill_name, difficulty_band, job_id, job_descriptio
             result = generate_single_question_with_timeout(skill_name, difficulty_band, job_id, job_description, used_questions)
             if result:
                 question_content = f"{result['question']} {' '.join(result['options'])}"
-                question_embedding = embedding_model.encode(question_content)
                 is_unique = True
                 for q in used_questions:
                     if 'question' in q and 'options' in q:
                         prev_content = f"{q['question']} {' '.join(q['options'])}"
-                        prev_embedding = embedding_model.encode(prev_content)
-                        similarity = np.dot(question_embedding, prev_embedding) / (
-                            np.linalg.norm(question_embedding) * np.linalg.norm(prev_embedding)
-                        )
-                        if similarity > 0.8:
-                            print(f"⚠️ Generated question too similar to previous (similarity: {similarity:.2f}). Retrying...")
+                        similarity = jaccard_similarity(question_content, prev_content)
+                        if similarity > 0.5:  # Adjusted threshold for Jaccard
+                            print(f"⚠️ Generated question too similar to previous (Jaccard: {similarity:.2f}). Retrying...")
                             is_unique = False
                             break
                 if is_unique:
@@ -457,7 +452,7 @@ def prepare_question_batches(skills_with_priorities, jd_experience_range, job_id
                 question_bank[band][key] = []
             
             saved_questions = []
-            question_embeddings = []
+            question_contents = []  # Store (mcq_id, content) tuples
             attempts = 0
             max_attempts = 5
             while len(saved_questions) < 20 and attempts < max_attempts:
@@ -480,14 +475,11 @@ def prepare_question_batches(skills_with_priorities, jd_experience_range, job_id
                                 continue
                             
                             question_content = f"{parsed['question']} {' '.join(parsed['options'])}"
-                            question_embedding = embedding_model.encode(question_content)
                             is_unique = True
-                            for _, prev_embedding in question_embeddings:
-                                similarity = np.dot(question_embedding, prev_embedding) / (
-                                    np.linalg.norm(question_embedding) * np.linalg.norm(prev_embedding)
-                                )
-                                if similarity > 0.8:
-                                    print(f"⚠️ Generated question too similar to previous (similarity: {similarity:.2f}). Skipping...")
+                            for _, prev_content in question_contents:
+                                similarity = jaccard_similarity(question_content, prev_content)
+                                if similarity > 0.5:  # Adjusted threshold for Jaccard
+                                    print(f"⚠️ Generated question too similar to previous (Jaccard: {similarity:.2f}). Skipping...")
                                     is_unique = False
                                     break
                             
@@ -514,7 +506,7 @@ def prepare_question_batches(skills_with_priorities, jd_experience_range, job_id
                                         "skill": skill_name,
                                         "difficulty_band": band
                                     })
-                                    question_embeddings.append((mcq.mcq_id, question_embedding))
+                                    question_contents.append((mcq.mcq_id, question_content))
                                     total_questions_saved += 1
                                     print(f"Added MCQ: {parsed['question']} (Band: {band}, Correct Answer: {parsed['correct_answer']})")
                                 except Exception as e:
