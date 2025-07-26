@@ -12,7 +12,7 @@ import {
 } from 'chart.js'
 import { Briefcase, X, ChevronRight, Download } from 'lucide-react'
 import Navbar from './components/Navbar'
-import { downloadAsPDF, baseUrl } from './utils/utils'
+import { baseUrl } from './utils/utils' // Remove downloadAsPDF import
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
@@ -47,7 +47,28 @@ const CandidateRankings = () => {
   }, [job_id])
 
   const handleDownloadReport = () => {
-    downloadAsPDF('report-section', `Candidate_Rankings_${job_id}`)
+    fetch(`${baseUrl}/recruiter/download-report/${job_id}/pre-assessment`, {
+      method: 'GET',
+      credentials: 'include',
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('Failed to fetch PDF')
+        }
+        return response.blob()
+      })
+      .then((blob) => {
+        const url = window.URL.createObjectURL(new Blob([blob]))
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `report_${job_id}_pre-assessment.pdf`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+      })
+      .catch((error) => {
+        console.error('Error downloading report:', error)
+      })
   }
 
   if (error) {
@@ -76,13 +97,12 @@ const CandidateRankings = () => {
   if (!data)
     return (
       <div className="min-h-screen bg-gray-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 flex flex-col">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center text-gray-700 dark:text-gray-200 text-sm">
-          Loading...
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center">
+          <p className="text-sm text-gray-700 dark:text-gray-200">Loading...</p>
         </div>
       </div>
     )
 
-  // Dynamic chart colors based on theme
   const isDarkMode = document.documentElement.classList.contains('dark')
   const textColor = isDarkMode ? '#D1D5DB' : '#374151'
   const titleColor = isDarkMode ? '#F3F4F6' : '#111827'
@@ -123,43 +143,28 @@ const CandidateRankings = () => {
       legend: {
         position: 'top',
         labels: {
-          font: {
-            size: 12,
-          },
+          font: { size: 12 },
           color: textColor,
         },
       },
       title: {
         display: true,
         text: `Candidate Scores for ${data.job_title}`,
-        font: {
-          size: 18,
-          weight: '600',
-        },
+        font: { size: 18, weight: '600' },
         color: titleColor,
-        padding: {
-          bottom: 20,
-        },
+        padding: { bottom: 20 },
       },
     },
     scales: {
       y: {
         beginAtZero: true,
         max: 1,
-        ticks: {
-          color: textColor,
-        },
-        grid: {
-          color: gridColor,
-        },
+        ticks: { color: textColor },
+        grid: { color: gridColor },
       },
       x: {
-        ticks: {
-          color: textColor,
-        },
-        grid: {
-          display: false,
-        },
+        ticks: { color: textColor },
+        grid: { display: false },
       },
     },
   }
@@ -184,20 +189,21 @@ const CandidateRankings = () => {
             className="flex items-center px-4 py-2 bg-green-600 dark:bg-green-500 text-white rounded-md text-sm font-medium hover:bg-green-700 dark:hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-600 dark:focus:ring-offset-gray-800 gap-2"
           >
             <Download className="w-4 h-4" />
-            Download Report
+            <span>Download Report</span>
           </button>
         </div>
 
         {data.candidates.length > 0 ? (
           <div id="report-section">
             <div className="bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-lg shadow-sm border border-gray-200 dark:border-gray-600 mb-8">
+              <h2 className="text-lg font-semibold mb-4">Score Distribution</h2>
               <Bar data={chartData} options={chartOptions} />
             </div>
 
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-600 mb-8 overflow-x-auto">
               <table className="min-w-full">
-                <thead className="bg-gray-50 dark:bg-gray-700">
-                  <tr>
+                <thead>
+                  <tr class="bg-gray-50 dark:bg-gray-700">
                     <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
                       Rank
                     </th>
@@ -279,6 +285,16 @@ const CandidateRankings = () => {
                       {(candidate.experience_score || 0).toFixed(2)}
                     </p>
                     {candidate.description && <p>{candidate.description}</p>}
+                    {data.ai_enabled && candidate.ai_feedback && (
+                      <div className="mt-4">
+                        <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+                          AI Feedback
+                        </h4>
+                        <p className="text-sm">
+                          {candidate.ai_feedback.summary}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

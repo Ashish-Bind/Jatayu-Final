@@ -104,16 +104,7 @@ def login():
     data = request.json
     user = User.query.filter_by(email=data['email']).first()
 
-    if not user:
-        return jsonify({'error': 'Invalid credentials'}), 401
-    
-    if not user.role == 'candidate':
-        return jsonify({'error': 'Invalid credentials'}), 401
-
-    if not user.is_active:
-        return jsonify({'error': 'Please confirm your email before logging in.'}), 403
-
-    if not user.check_password(data['password']):
+    if not user or user.role != 'candidate' or not user.is_active or not user.check_password(data['password']):
         return jsonify({'error': 'Invalid credentials'}), 401
 
     # Save user session
@@ -125,6 +116,10 @@ def login():
     current_ip = request.remote_addr
     print(f"📡 Received location: {location}")
     print(f"📡 Current IP address: {current_ip}")
+
+    candidate = Candidate.query.filter_by(user_id=user.id).first()
+    if not candidate:
+        return jsonify({'error': 'Candidate profile not found'}), 404
 
     try:
         login_log = LoginLog(
@@ -145,7 +140,7 @@ def login():
         print(f"❌ Error saving login log: {e}")
 
     # Check last login
-    enforce_face_verification = False
+    enforce_otp_verification = False
     last_log = (
         LoginLog.query
         .filter(LoginLog.user_id == user.id)
@@ -166,25 +161,41 @@ def login():
             distance_km = geodesic(prev_coords, current_coords).km
             print(f"📏 Distance from last login: {distance_km:.2f} km")
             if distance_km > 100:
-                enforce_face_verification = True
-                print("⚠️ Location changed significantly (>100km). Enforcing face verification.")
+                enforce_otp_verification = True
+                candidate.requires_otp_verification = True  # Set the flag
+                print("⚠️ Location changed significantly (>100km). Enforcing OTP verification.")
         except Exception as e:
             print(f"❌ Error calculating distance: {e}")
-            enforce_face_verification = True
+            enforce_otp_verification = True
+            candidate.requires_otp_verification = True
     elif last_log and last_log.ip_address != current_ip:
-        print(f"⚠️ IP changed: {last_log.ip_address} -> {current_ip}. Enforcing face verification.")
-        enforce_face_verification = True
+        print(f"⚠️ IP changed: {last_log.ip_address} -> {current_ip}. Enforcing OTP verification.")
+        enforce_otp_verification = True
+        candidate.requires_otp_verification = True
+    elif not last_log:
+        print("⚠️ First login detected. Enforcing OTP verification.")
+        enforce_otp_verification = True
+        candidate.requires_otp_verification = True
     else:
         print("✅ No significant location/IP change detected.")
 
-    # Save enforce flag in session
-    session['enforce_face_verification'] = enforce_face_verification
+    # Commit the change to requires_otp_verification
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Error updating candidate requires_otp_verification: {e}")
+        return jsonify({'error': 'Failed to process login'}), 500
+
+    # Save enforce flag in session for backward compatibility
+    session['enforce_otp_verification'] = enforce_otp_verification
 
     return jsonify({
         'message': 'Login successful',
         'role': user.role,
-        'enforce_face_verification': enforce_face_verification
+        'enforce_otp_verification': enforce_otp_verification
     }), 200
+
 
 
 # Auth check route
@@ -213,7 +224,7 @@ def check_auth():
     if not user:
         return jsonify({'error': 'User not found'}), 404
 
-    enforce_face_verification = session.get('enforce_face_verification', False)
+    enforce_otp_verification = session.get('enforce_otp_verification', False)
 
     response = {
         'user': {
@@ -234,7 +245,7 @@ def check_auth():
                 'degree_name': candidate.degree.degree_name if candidate.degree else None,
                 'years_of_experience': candidate.years_of_experience,
                 'is_profile_complete': candidate.is_profile_complete,
-                'enforce_face_verification': enforce_face_verification
+                'enforce_otp_verification': enforce_otp_verification
             })
 
     elif role == 'recruiter':
@@ -244,7 +255,8 @@ def check_auth():
             response['user'].update({
                 'recruiter_id': recruiter.recruiter_id,
                 'company': recruiter.company,
-                'phone': recruiter.phone
+                'phone': recruiter.phone,
+                'subscription_plan': recruiter.subscription_plan.name if recruiter.subscription_plan else None
             })
 
     print(f"✅ Auth check: {response['user']}")

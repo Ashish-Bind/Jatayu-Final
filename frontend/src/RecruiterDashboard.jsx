@@ -10,19 +10,18 @@ import {
   Plus,
   Trash2,
   Calendar,
-  User2,
+  User,
   Award,
   Code,
-  User,
   GraduationCap,
   BrainCircuit,
+  Loader2,
 } from 'lucide-react'
 import Button from './components/Button'
 import { format } from 'date-fns'
 import LinkButton from './components/LinkButton'
-import FormInput from './components/FormInput'
-import Select from 'react-select'
 import { baseUrl } from './utils/utils'
+import Select from 'react-select'
 
 const formatDate = (date) => {
   return format(new Date(date), 'MMM d, yyyy')
@@ -282,28 +281,28 @@ const RecruiterDashboard = () => {
   )
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-gray-900 dark:via-slate-900 dark:to-indigo-950 font-sans flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-gray-900 dark:via-slate-900 dark:to-indigo-950 font-[Inter] flex flex-col">
       <Navbar />
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent mb-6">
-          Recruiter Dashboard
+          Jobs Panel
         </h1>
 
         {error && (
           <div
-            className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 mb-6 rounded-2xl shadow-lg flex items-center gap-2"
+            className="bg-red-50 dark:bg-red-900/30 backdrop-blur-lg border-l-4 border-red-500 text-red-700 dark:text-red-300 p-4 mb-6 rounded-2xl shadow-lg flex items-center gap-2"
             role="alert"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
             {error}
           </div>
         )}
         {success && (
           <div
-            className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg border-l-4 border-green-500 text-green-700 dark:text-green-300 p-4 mb-6 rounded-2xl shadow-lg flex items-center gap-2"
+            className="bg-green-50 dark:bg-green-900/30 backdrop-blur-lg border-l-4 border-green-500 text-green-700 dark:text-green-300 p-4 mb-6 rounded-2xl shadow-lg flex items-center gap-2"
             role="alert"
           >
-            <Check className="w-5 h-5" />
+            <Check className="w-4 h-4" />
             {success}
           </div>
         )}
@@ -323,7 +322,7 @@ const RecruiterDashboard = () => {
                 {tab === 'create'
                   ? 'Create Assessment'
                   : tab === 'active'
-                  ? 'Active Assessments'
+                  ? 'Current Assessments'
                   : 'Past Assessments'}
               </button>
             ))}
@@ -334,99 +333,158 @@ const RecruiterDashboard = () => {
           <div>
             <Button
               onClick={() => setIsFormOpen(!isFormOpen)}
-              className="mb-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
+              className="mb-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-8 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
             >
               {isFormOpen ? 'Cancel' : 'Create New Assessment'}
               {isFormOpen ? (
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               ) : (
-                <Briefcase className="w-5 h-5" />
+                <Briefcase className="w-4 h-4" />
               )}
             </Button>
 
             {isFormOpen && (
-              <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg p-6 sm:p-8 rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 mb-8">
-                <h2 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent mb-6 flex items-center gap-3">
+              <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-md border border-gray-200 dark:border-gray-800 p-6 sm:p-8">
+                <h2 className="text-3xl font-extrabold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent mb-3 flex items-center gap-3">
                   <Briefcase className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
                   Create New Assessment
+                  <span className="inline-block animate-pulse">📋</span>
                 </h2>
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <p className="text-lg text-gray-700 dark:text-gray-200 font-medium mb-6">
+                  Fill in the details to create a new assessment for candidates
+                </p>
+                <form onSubmit={handleSubmit} className="space-y-8">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8">
                     <div>
-                      <FormInput
-                        label="Job Title"
+                      <label
+                        htmlFor="job_title"
+                        className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
+                      >
+                        <span className="flex items-center">
+                          <Briefcase className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                          Job Title
+                          <span className="text-red-500 ml-1">*</span>
+                        </span>
+                      </label>
+                      <input
+                        type="text"
                         id="job_title"
                         name="job_title"
                         value={formData.job_title}
                         onChange={handleInputChange}
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300"
                         placeholder="Software Engineer"
                         required
-                        className="bg-white/50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 focus:ring-indigo-600 focus:border-indigo-600"
                       />
                     </div>
                     <div>
-                      <FormInput
-                        label="Min Experience (years)"
-                        id="experience_min"
+                      <label
+                        htmlFor="experience_min"
+                        className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
+                      >
+                        <span className="flex items-center">
+                          <Award className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                          Min Experience (years)
+                          <span className="text-red-500 ml-1">*</span>
+                        </span>
+                      </label>
+                      <input
                         type="number"
+                        id="experience_min"
                         name="experience_min"
                         value={formData.experience_min}
                         onChange={handleInputChange}
                         min="0"
                         step="0.1"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300"
                         placeholder="2"
                         required
-                        className="bg-white/50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 focus:ring-indigo-600 focus:border-indigo-600"
                       />
                     </div>
                     <div>
-                      <FormInput
-                        label="Max Experience (years)"
-                        id="experience_max"
+                      <label
+                        htmlFor="experience_max"
+                        className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
+                      >
+                        <span className="flex items-center">
+                          <Award className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                          Max Experience (years)
+                          <span className="text-red-500 ml-1">*</span>
+                        </span>
+                      </label>
+                      <input
                         type="number"
+                        id="experience_max"
                         name="experience_max"
                         value={formData.experience_max}
                         onChange={handleInputChange}
                         min={formData.experience_min || 0}
                         step="0.1"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300"
                         placeholder="5"
                         required
-                        className="bg-white/50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 focus:ring-indigo-600 focus:border-indigo-600"
                       />
                     </div>
                     <div>
-                      <FormInput
-                        label="Duration (minutes)"
-                        id="duration"
+                      <label
+                        htmlFor="duration"
+                        className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
+                      >
+                        <span className="flex items-center">
+                          <Calendar className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                          Duration (minutes)
+                          <span className="text-red-500 ml-1">*</span>
+                        </span>
+                      </label>
+                      <input
                         type="number"
+                        id="duration"
                         name="duration"
                         value={formData.duration}
                         onChange={handleInputChange}
                         min="1"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300"
                         placeholder="30"
                         required
-                        className="bg-white/50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 focus:ring-indigo-600 focus:border-indigo-600"
                       />
                     </div>
                     <div>
-                      <FormInput
-                        label="Number of Questions"
-                        id="num_questions"
+                      <label
+                        htmlFor="num_questions"
+                        className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
+                      >
+                        <span className="flex items-center">
+                          <Code className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                          Number of Questions
+                          <span className="text-red-500 ml-1">*</span>
+                        </span>
+                      </label>
+                      <input
                         type="number"
+                        id="num_questions"
                         name="num_questions"
                         value={formData.num_questions}
                         onChange={handleInputChange}
                         min="1"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300"
                         placeholder="10"
                         required
-                        className="bg-white/50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 focus:ring-indigo-600 focus:border-indigo-600"
                       />
                     </div>
                     <div>
-                      <FormInput
-                        label="Start Date"
-                        id="schedule_start"
+                      <label
+                        htmlFor="schedule_start"
+                        className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
+                      >
+                        <span className="flex items-center">
+                          <Calendar className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                          Start Date
+                          <span className="text-red-500 ml-1">*</span>
+                        </span>
+                      </label>
+                      <input
                         type="datetime-local"
+                        id="schedule_start"
                         name="schedule_start"
                         value={
                           formData.schedule_start
@@ -442,15 +500,24 @@ const RecruiterDashboard = () => {
                             schedule_start: date.toISOString(),
                           })
                         }}
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300"
                         required
-                        className="bg-white/50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 focus:ring-indigo-600 focus:border-indigo-600"
                       />
                     </div>
                     <div>
-                      <FormInput
-                        label="End Date"
-                        id="schedule_end"
+                      <label
+                        htmlFor="schedule_end"
+                        className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
+                      >
+                        <span className="flex items-center">
+                          <Calendar className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                          End Date
+                          <span className="text-red-500 ml-1">*</span>
+                        </span>
+                      </label>
+                      <input
                         type="datetime-local"
+                        id="schedule_end"
                         name="schedule_end"
                         value={
                           formData.schedule_end
@@ -466,8 +533,8 @@ const RecruiterDashboard = () => {
                             schedule_end: date.toISOString(),
                           })
                         }}
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300"
                         required
-                        className="bg-white/50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 focus:ring-indigo-600 focus:border-indigo-600"
                       />
                     </div>
                     <div>
@@ -475,7 +542,10 @@ const RecruiterDashboard = () => {
                         htmlFor="degree_required"
                         className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
                       >
-                        Degree
+                        <span className="flex items-center">
+                          <GraduationCap className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                          Degree
+                        </span>
                       </label>
                       <Select
                         options={degrees}
@@ -493,22 +563,22 @@ const RecruiterDashboard = () => {
                           control: (provided) => ({
                             ...provided,
                             borderColor: '#e5e7eb',
-                            borderRadius: '0.5rem',
+                            borderRadius: '0.375rem',
                             padding: '2px',
-                            backgroundColor: 'rgba(255, 255, 255, 0.7)',
-                            '&:hover': { borderColor: '#4f46e5' },
+                            backgroundColor: '#fff',
+                            '&:hover': { borderColor: '#6366f1' },
                           }),
                           menu: (provided) => ({
                             ...provided,
-                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                            backgroundColor: '#fff',
                           }),
                           option: (provided, state) => ({
                             ...provided,
                             backgroundColor: state.isSelected
-                              ? '#4f46e5'
+                              ? '#6366f1'
                               : state.isFocused
                               ? '#e0e7ff'
-                              : 'rgba(255, 255, 255, 0.9)',
+                              : '#fff',
                             color: state.isSelected ? '#fff' : '#374151',
                           }),
                           singleValue: (provided) => ({
@@ -520,7 +590,7 @@ const RecruiterDashboard = () => {
                           ...theme,
                           colors: {
                             ...theme.colors,
-                            primary: '#4f46e5',
+                            primary: '#6366f1',
                             primary25: '#e0e7ff',
                           },
                         })}
@@ -531,7 +601,10 @@ const RecruiterDashboard = () => {
                         htmlFor="degree_branch"
                         className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
                       >
-                        Branch/Specialization
+                        <span className="flex items-center">
+                          <BrainCircuit className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                          Branch/Specialization
+                        </span>
                       </label>
                       <Select
                         options={branches}
@@ -548,22 +621,22 @@ const RecruiterDashboard = () => {
                           control: (provided) => ({
                             ...provided,
                             borderColor: '#e5e7eb',
-                            borderRadius: '0.5rem',
+                            borderRadius: '0.375rem',
                             padding: '2px',
-                            backgroundColor: 'rgba(255, 255, 255, 0.7)',
-                            '&:hover': { borderColor: '#4f46e5' },
+                            backgroundColor: '#fff',
+                            '&:hover': { borderColor: '#6366f1' },
                           }),
                           menu: (provided) => ({
                             ...provided,
-                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                            backgroundColor: '#fff',
                           }),
                           option: (provided, state) => ({
                             ...provided,
                             backgroundColor: state.isSelected
-                              ? '#4f46e5'
+                              ? '#6366f1'
                               : state.isFocused
                               ? '#e0e7ff'
-                              : 'rgba(255, 255, 255, 0.9)',
+                              : '#fff',
                             color: state.isSelected ? '#fff' : '#374151',
                           }),
                           singleValue: (provided) => ({
@@ -575,24 +648,32 @@ const RecruiterDashboard = () => {
                           ...theme,
                           colors: {
                             ...theme.colors,
-                            primary: '#4f46e5',
+                            primary: '#6366f1',
                             primary25: '#e0e7ff',
                           },
                         })}
                       />
                     </div>
                     <div>
-                      <FormInput
-                        label="Passout Year"
-                        id="passout_year"
+                      <label
+                        htmlFor="passout_year"
+                        className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
+                      >
+                        <span className="flex items-center">
+                          <Calendar className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                          Passout Year
+                        </span>
+                      </label>
+                      <input
                         type="number"
+                        id="passout_year"
                         name="passout_year"
                         value={formData.passout_year}
                         onChange={handleInputChange}
                         min="1900"
                         max={new Date().getFullYear() + 5}
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300"
                         placeholder="2023"
-                        className="bg-white/50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 focus:ring-indigo-600 focus:border-indigo-600"
                       />
                     </div>
                     <div>
@@ -600,7 +681,10 @@ const RecruiterDashboard = () => {
                         htmlFor="passout_year_required"
                         className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
                       >
-                        Passout Year Required
+                        <span className="flex items-center">
+                          <Calendar className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                          Passout Year Required
+                        </span>
                       </label>
                       <input
                         type="checkbox"
@@ -611,58 +695,68 @@ const RecruiterDashboard = () => {
                         className="h-4 w-4 text-indigo-600 focus:ring-indigo-600 border-gray-300 dark:border-gray-600 rounded"
                       />
                     </div>
-                    <div className="sm:col-span-2">
+                    <div className="md:col-span-2">
                       <label
                         htmlFor="job_description"
                         className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
                       >
-                        Description
+                        <span className="flex items-center">
+                          <Code className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                          Description
+                        </span>
                       </label>
                       <textarea
                         id="job_description"
                         name="job_description"
                         value={formData.job_description}
                         onChange={handleInputChange}
-                        className="w-full px-3 py-2 bg-white/50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-indigo-600 focus:border-indigo-600 text-base placeholder-gray-400 dark:placeholder-gray-300 transition-all duration-200 resize-y"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300 resize-y"
                         rows="5"
                         placeholder="E.g., Looking for a backend engineer with experience in Django, REST APIs, and PostgreSQL..."
                       />
                     </div>
-                    <div className="sm:col-span-2">
+                    <div className="md:col-span-2">
                       <label
                         htmlFor="custom_prompt"
                         className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
                       >
-                        Customized Prompt
+                        <span className="flex items-center">
+                          <Code className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                          Customized Prompt
+                        </span>
                       </label>
                       <textarea
                         id="custom_prompt"
                         name="custom_prompt"
                         value={formData.custom_prompt}
                         onChange={handleInputChange}
-                        className="w-full px-3 py-2 bg-white/50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-indigo-600 focus:border-indigo-600 text-base placeholder-gray-400 dark:placeholder-gray-300 transition-all duration-200 resize-y"
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300 resize-y"
                         rows="4"
                         placeholder="E.g., I want code snippet based questions..."
                       />
                     </div>
-                    <div className="sm:col-span-2">
+                    <div className="md:col-span-2">
                       <label className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1">
-                        Skills
+                        <span className="flex items-center">
+                          <Code className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                          Skills
+                          <span className="text-red-500 ml-1">*</span>
+                        </span>
                       </label>
-                      <div className="flex gap-4 mb-4">
+                      <div className="flex gap-4 mb-4 items-center">
                         <input
                           type="text"
                           name="name"
                           value={newSkill.name}
                           onChange={handleSkillChange}
-                          className="flex-1 px-3 py-2 bg-white/50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-indigo-600 focus:border-indigo-600 text-base placeholder-gray-400 dark:placeholder-gray-300 transition-all duration-200"
+                          className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300"
                           placeholder="e.g., Python"
                         />
                         <select
                           name="priority"
                           value={newSkill.priority}
                           onChange={handleSkillChange}
-                          className="px-3 py-2 bg-white/50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl focus:ring-indigo-600 focus:border-indigo-600 text-base text-gray-700 dark:text-gray-200"
+                          className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base"
                         >
                           <option value="low">Low</option>
                           <option value="medium">Medium</option>
@@ -671,10 +765,10 @@ const RecruiterDashboard = () => {
                         <Button
                           type="button"
                           onClick={addSkill}
-                          className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
+                          className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
                         >
                           Add
-                          <Plus className="w-5 h-5" />
+                          <Plus className="w-4 h-4" />
                         </Button>
                       </div>
                       {formData.skills.length > 0 && (
@@ -682,7 +776,7 @@ const RecruiterDashboard = () => {
                           {formData.skills.map((skill, index) => (
                             <li
                               key={index}
-                              className="flex items-center justify-between bg-white/50 dark:bg-gray-800/50 backdrop-blur-lg p-3 rounded-xl shadow-sm"
+                              className="flex items-center justify-between bg-gray-100 dark:bg-gray-800 p-3 rounded-md border border-gray-200 dark:border-gray-700"
                             >
                               <span className="text-base text-gray-700 dark:text-gray-200">
                                 {skill.name} ({skill.priority})
@@ -692,7 +786,7 @@ const RecruiterDashboard = () => {
                                 onClick={() => removeSkill(index)}
                                 className="text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-all duration-200"
                               >
-                                <Trash2 className="w-5 h-5" />
+                                <Trash2 className="w-4 h-4" />
                               </button>
                             </li>
                           ))}
@@ -700,14 +794,23 @@ const RecruiterDashboard = () => {
                       )}
                     </div>
                   </div>
-                  <div className="flex justify-end">
+                  <div className="flex justify-end mt-10">
                     <Button
                       type="submit"
                       disabled={isLoading}
-                      className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
+                      className="gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-8 py-3 rounded-xl flex items-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-60"
                     >
-                      Create Assessment
-                      <Briefcase className="w-5 h-5" />
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          Create Assessment
+                          <Briefcase className="w-4 h-4" />
+                        </>
+                      )}
                     </Button>
                   </div>
                 </form>
@@ -720,7 +823,7 @@ const RecruiterDashboard = () => {
           <div>
             <h2 className="text-xl font-semibold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent mb-4 flex items-center gap-2">
               <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-300" />
-              Active Assessments
+              Ongoing Assessments
             </h2>
             {activeAssessments.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

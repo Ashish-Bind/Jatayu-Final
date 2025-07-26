@@ -12,6 +12,7 @@ class AssessmentAttempt(db.Model):
     end_time = db.Column(db.DateTime)
     status = db.Column(db.String(20), default='started')
     performance_log = db.Column(JSONB)
+    db.relationship('AssessmentProctoringData', backref='attempt', uselist=False)
 
     def __repr__(self):
         return f'<AssessmentAttempt {self.attempt_id} for Candidate {self.candidate_id}>'

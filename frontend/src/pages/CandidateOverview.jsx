@@ -33,6 +33,7 @@ import {
   Title as ChartTitle,
   Tooltip,
   Legend,
+  Filler,
 } from 'chart.js'
 
 ChartJS.register(
@@ -42,7 +43,8 @@ ChartJS.register(
   LineElement,
   ChartTitle,
   Tooltip,
-  Legend
+  Legend,
+  Filler
 )
 
 const getSkillColor = (index) => {

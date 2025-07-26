@@ -209,8 +209,14 @@ const Subscriptions = () => {
                       className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed"
                       disabled={loading}
                     >
-                      <DollarSign className="w-5 h-5 mr-2" />
-                      Subscribe
+                      {user.subscription_plan === plan.name ? (
+                        <CheckCircle className="w-5 h-5 mr-2" />
+                      ) : (
+                        <DollarSign className="w-5 h-5 mr-2" />
+                      )}
+                      {user.subscription_plan === plan.name
+                        ? 'You are already subscribed'
+                        : 'Subscribe'}
                     </button>
                   </div>
                 ))}

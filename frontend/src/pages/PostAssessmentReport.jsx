@@ -13,7 +13,7 @@ import {
 } from 'chart.js'
 import { Briefcase, X, ChevronRight, Download } from 'lucide-react'
 import Navbar from '../components/Navbar'
-import { baseUrl, downloadAsPDF } from '../utils/utils'
+import { baseUrl } from '../utils/utils'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
@@ -29,6 +29,7 @@ const PostAssessmentReport = () => {
       })
       .then((response) => {
         setReport(response.data)
+        setError('')
       })
       .catch((error) => {
         console.error('Error fetching report:', error)
@@ -37,7 +38,28 @@ const PostAssessmentReport = () => {
   }, [job_id])
 
   const handleDownloadReport = () => {
-    downloadAsPDF('report-section', `PostAssessment_Report_${job_id}`)
+    fetch(`${baseUrl}/recruiter/download-report/${job_id}/pre-assessment`, {
+      method: 'GET',
+      credentials: 'include',
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('Failed to fetch PDF')
+        }
+        return response.blob()
+      })
+      .then((blob) => {
+        const url = window.URL.createObjectURL(new Blob([blob]))
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `report_${job_id}_post-assessment.pdf`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+      })
+      .catch((error) => {
+        console.error('Error downloading report:', error)
+      })
   }
 
   if (error) {
@@ -63,7 +85,7 @@ const PostAssessmentReport = () => {
     )
   }
 
-  if (!report)
+  if (!report) {
     return (
       <div className="min-h-screen bg-gray-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 flex flex-col">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center text-gray-700 dark:text-gray-200 text-sm">
@@ -71,6 +93,7 @@ const PostAssessmentReport = () => {
         </div>
       </div>
     )
+  }
 
   // Dynamic chart colors based on theme
   const isDarkMode = document.documentElement.classList.contains('dark')
@@ -91,7 +114,7 @@ const PostAssessmentReport = () => {
       {
         label: 'Avg Time per Question (s)',
         data: report.candidates.map(
-          (candidate) => candidate.avg_time_per_question || 0
+          (candidate) => candidate.avg_time_per_answer || 0
         ),
         backgroundColor: 'rgba(16, 185, 129, 0.6)',
         borderColor: 'rgba(16, 185, 129, 1)',
@@ -106,42 +129,27 @@ const PostAssessmentReport = () => {
       legend: {
         position: 'top',
         labels: {
-          font: {
-            size: 12,
-          },
+          font: { size: 12 },
           color: textColor,
         },
       },
       title: {
         display: true,
         text: `Post-Assessment Metrics for ${report.job_title}`,
-        font: {
-          size: 18,
-          weight: '600',
-        },
+        font: { size: 18, weight: '600' },
         color: titleColor,
-        padding: {
-          bottom: 20,
-        },
+        padding: { bottom: 20 },
       },
     },
     scales: {
       y: {
         beginAtZero: true,
-        ticks: {
-          color: textColor,
-        },
-        grid: {
-          color: gridColor,
-        },
+        ticks: { color: textColor },
+        grid: { color: gridColor },
       },
       x: {
-        ticks: {
-          color: textColor,
-        },
-        grid: {
-          display: false,
-        },
+        ticks: { color: textColor },
+        grid: { display: false },
       },
     },
   }
@@ -201,6 +209,9 @@ const PostAssessmentReport = () => {
                     <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
                       Final Bands
                     </th>
+                    <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
+                      AI Feedback
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -225,7 +236,7 @@ const PostAssessmentReport = () => {
                         {candidate.total_questions}
                       </td>
                       <td className="py-3 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
-                        {candidate.avg_time_per_question}
+                        {candidate.avg_time_per_answer}
                       </td>
                       <td className="py-3 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
                         {Object.entries(candidate.final_bands).map(
@@ -235,6 +246,11 @@ const PostAssessmentReport = () => {
                             </span>
                           )
                         )}
+                      </td>
+                      <td className="py-3 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
+                        {report.ai_enabled && candidate.ai_feedback
+                          ? candidate.ai_feedback.summary
+                          : 'No AI feedback available'}
                       </td>
                     </tr>
                   ))}
@@ -265,7 +281,7 @@ const PostAssessmentReport = () => {
                     <p>Status: {candidate.status}</p>
                     <p>Accuracy: {(candidate.accuracy || 0).toFixed(2)}%</p>
                     <p>Questions Attempted: {candidate.total_questions}</p>
-                    <p>Avg Time/Question: {candidate.avg_time_per_question}s</p>
+                    <p>Avg Time/Question: {candidate.avg_time_per_answer}s</p>
                     <p>
                       Final Bands:{' '}
                       {Object.entries(candidate.final_bands).map(
@@ -276,6 +292,16 @@ const PostAssessmentReport = () => {
                         )
                       )}
                     </p>
+                    {report.ai_enabled && candidate.ai_feedback ? (
+                      <div className="mt-4 bg-gray-100 dark:bg-gray-700 p-4 rounded">
+                        <h4 className="text-sm font-medium text-gray-900 dark:text-white">
+                          AI Feedback
+                        </h4>
+                        <p>{candidate.ai_feedback.summary}</p>
+                      </div>
+                    ) : (
+                      <p className="mt-4 text-sm">No AI feedback available</p>
+                    )}
                   </div>
                 </div>
               ))}

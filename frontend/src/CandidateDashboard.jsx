@@ -17,6 +17,7 @@ import {
   Loader2,
   Code,
   Camera,
+  AlertTriangle,
 } from 'lucide-react'
 import Navbar from './components/Navbar'
 import { ThemeContext } from './context/ThemeContext'
@@ -26,6 +27,7 @@ import Button from './components/Button'
 import { baseUrl } from './utils/utils'
 import * as cocoSsd from '@tensorflow-models/coco-ssd'
 import '@tensorflow/tfjs'
+import * as tf from '@tensorflow/tfjs'
 import Webcam from 'react-webcam'
 
 // Bind modal to your appElement (for accessibility)
@@ -56,6 +58,82 @@ const getPriorityColor = (priority) => {
   }
 }
 
+const checkBrowserCompatibility = async () => {
+  const compatibility = {
+    webgl: false,
+    tensorflow: false,
+    camera: false,
+    libraries: false,
+    ram: false,
+    storage: false,
+  }
+
+  // Check WebGL
+  const canvas = document.createElement('canvas')
+  const gl =
+    canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+  compatibility.webgl = !!gl
+
+  // Check TensorFlow.js
+  try {
+    await tf.ready()
+    compatibility.tensorflow = true
+  } catch (error) {
+    console.error('TensorFlow.js check failed:', error)
+  }
+
+  // Check camera availability
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    compatibility.camera = devices.some(
+      (device) => device.kind === 'videoinput'
+    )
+  } catch (error) {
+    console.error('Camera check failed:', error)
+  }
+
+  // Check required libraries
+  try {
+    compatibility.libraries = !!(React && cocoSsd && Webcam && Modal && format)
+  } catch (error) {
+    console.error('Library check failed:', error)
+  }
+
+  // Check RAM availability (navigator.hardwareConcurrency for CPU threads as proxy if memory not available)
+  try {
+    const minRamMB = 4096 // Minimum 4GB RAM required
+    if ('deviceMemory' in navigator) {
+      const deviceMemoryGB = navigator.deviceMemory || 0
+      compatibility.ram = deviceMemoryGB * 1024 >= minRamMB
+    } else {
+      // Fallback: assume sufficient RAM if at least 4 CPU threads
+      const cpuThreads = navigator.hardwareConcurrency || 1
+      compatibility.ram = cpuThreads >= 4
+    }
+  } catch (error) {
+    console.error('RAM check failed:', error)
+  }
+
+  // Check storage availability
+  try {
+    if ('storage' in navigator && 'estimate' in navigator.storage) {
+      const storageEstimate = await navigator.storage.estimate()
+      const minStorageMB = 500 // Minimum 500MB storage required
+      const availableStorageMB = Math.floor(
+        storageEstimate.quota / (1024 * 1024)
+      )
+      compatibility.storage = availableStorageMB >= minStorageMB
+    } else {
+      // Fallback: assume storage is sufficient if API not available
+      compatibility.storage = true
+    }
+  } catch (error) {
+    console.error('Storage check failed:', error)
+  }
+
+  return compatibility
+}
+
 const CandidateDashboard = () => {
   const { user } = useAuth()
   const { theme } = useContext(ThemeContext)
@@ -69,6 +147,8 @@ const CandidateDashboard = () => {
   const [selectedAssessment, setSelectedAssessment] = useState(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isIneligibleModalOpen, setIsIneligibleModalOpen] = useState(false)
+  const [isResourceWarningModalOpen, setIsResourceWarningModalOpen] =
+    useState(false)
   const [ineligibleMessage, setIneligibleMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [successMessage, setSuccessMessage] = useState('')
@@ -80,6 +160,8 @@ const CandidateDashboard = () => {
   const [modelLoaded, setModelLoaded] = useState(false)
   const [cameraVerified, setCameraVerified] = useState(false)
   const [faceVerified, setFaceVerified] = useState(false)
+  const [browserCompatibility, setBrowserCompatibility] = useState(null)
+  const [compatibilityLoading, setCompatibilityLoading] = useState(false)
   const webcamRef = useRef(null)
   const streamRef = useRef(null)
 
@@ -244,6 +326,9 @@ const CandidateDashboard = () => {
     setModelLoaded(false)
     setCameraVerified(false)
     setFaceVerified(false)
+    setBrowserCompatibility(null)
+    setCompatibilityLoading(false)
+    setIsResourceWarningModalOpen(false)
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop())
     }
@@ -289,6 +374,7 @@ const CandidateDashboard = () => {
       }
     } else if (modalStep === 5) {
       // Face verification
+      setFaceVerified(false) // Reset face verification state
       if (webcamRef.current && webcamStream) {
         const imageSrc = webcamRef.current.getScreenshot()
         if (!imageSrc) {
@@ -296,6 +382,7 @@ const CandidateDashboard = () => {
           return
         }
 
+        setCompatibilityLoading(true) // Start loading animation
         const blob = await fetch(imageSrc).then((r) => r.blob())
         const formData = new FormData()
         formData.append('webcam_image', blob, 'webcam.jpg')
@@ -308,6 +395,7 @@ const CandidateDashboard = () => {
           })
 
           const data = await response.json()
+          setCompatibilityLoading(false) // Stop loading animation
           if (data.success) {
             setFaceVerified(true)
             setModalStep((prev) => prev + 1)
@@ -316,14 +404,50 @@ const CandidateDashboard = () => {
           }
         } catch (error) {
           console.error('Error during face verification:', error)
+          setCompatibilityLoading(false) // Stop loading animation
           setErrorMessage(`Face verification failed: ${error.message}`)
         }
       } else {
+        setCompatibilityLoading(false) // Stop loading animation
         setErrorMessage('No webcam feed available for face verification.')
       }
     } else if (modalStep === 6) {
+      // Browser compatibility check
+      setCompatibilityLoading(true)
+      try {
+        const compatibility = await checkBrowserCompatibility()
+        setBrowserCompatibility(compatibility)
+        setCompatibilityLoading(false)
+        if (
+          compatibility.webgl &&
+          compatibility.tensorflow &&
+          compatibility.camera &&
+          compatibility.libraries &&
+          compatibility.ram &&
+          compatibility.storage
+        ) {
+          setModalStep(modalStep + 1)
+        } else {
+          if (!compatibility.ram || !compatibility.storage) {
+            setIsResourceWarningModalOpen(true)
+          }
+          setErrorMessage(
+            'Browser compatibility check failed. Please ensure WebGL, TensorFlow.js, camera, required libraries, sufficient RAM, and storage are available.'
+          )
+        }
+      } catch (error) {
+        setCompatibilityLoading(false)
+        setErrorMessage(`Browser compatibility check failed: ${error.message}`)
+      }
+    } else if (modalStep === 7) {
       // Start assessment
-      if (selectedAssessment && cameraVerified && modelLoaded && faceVerified) {
+      if (
+        selectedAssessment &&
+        cameraVerified &&
+        modelLoaded &&
+        faceVerified &&
+        browserCompatibility?.webgl
+      ) {
         fetch(`${baseUrl}/candidate/start-assessment`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -369,6 +493,10 @@ const CandidateDashboard = () => {
       }
       if (modalStep === 5) {
         setFaceVerified(false)
+      }
+      if (modalStep === 6) {
+        setBrowserCompatibility(null)
+        setIsResourceWarningModalOpen(false)
       }
     }
   }
@@ -800,7 +928,8 @@ const CandidateDashboard = () => {
                   {modalStep === 3 && 'Load Object Detection Model'}
                   {modalStep === 4 && 'Camera Verification'}
                   {modalStep === 5 && 'Face Verification'}
-                  {modalStep === 6 && 'Start Assessment'}
+                  {modalStep === 6 && 'Browser Compatibility'}
+                  {modalStep === 7 && 'Start Assessment'}
                 </h2>
               </div>
               <button
@@ -829,6 +958,7 @@ const CandidateDashboard = () => {
                     'Model Loading',
                     'Camera Verification',
                     'Face Verification',
+                    'Browser Compatibility',
                     'Start',
                   ].map((label, index) => (
                     <div key={index} className="flex items-center flex-1">
@@ -836,7 +966,7 @@ const CandidateDashboard = () => {
                         className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                           modalStep > index + 1
                             ? 'bg-green-500 text-white'
-                            : modalStep === index + 1
+                            : modalStep == index + 1
                             ? 'bg-indigo-600 text-white'
                             : 'bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300'
                         }`}
@@ -856,7 +986,7 @@ const CandidateDashboard = () => {
                       >
                         {label}
                       </span>
-                      {index < 5 && (
+                      {index < 6 && (
                         <div className="flex-1 h-1 bg-gray-200 dark:bg-gray-700 mx-2">
                           <div
                             className={`h-full ${
@@ -1114,6 +1244,14 @@ const CandidateDashboard = () => {
                         <span>Face verified successfully.</span>
                       </div>
                     )}
+                    {compatibilityLoading && (
+                      <div className="flex items-center gap-3 justify-center">
+                        <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                        <span className="text-gray-700 dark:text-gray-200">
+                          Verifying face...
+                        </span>
+                      </div>
+                    )}
                     <div className="relative w-full aspect-video bg-gray-100/80 dark:bg-gray-700/80 rounded-2xl overflow-hidden border border-gray-200/50 dark:border-gray-700/50 shadow-inner">
                       {webcamStream && (
                         <Webcam
@@ -1130,7 +1268,9 @@ const CandidateDashboard = () => {
                     <Button
                       onClick={handleNextStep}
                       className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
-                      disabled={!webcamStream || faceVerified}
+                      disabled={
+                        !webcamStream || faceVerified || compatibilityLoading
+                      }
                     >
                       Verify Face
                       <Camera className="w-5 h-5" />
@@ -1138,8 +1278,104 @@ const CandidateDashboard = () => {
                   </div>
                 )}
 
-                {/* Step 6: Start Assessment */}
+                {/* Step 6: Browser Compatibility */}
                 {modalStep === 6 && (
+                  <div className="space-y-6 text-base mb-8">
+                    <p className="text-gray-900 dark:text-gray-100">
+                      Verifying browser compatibility for the assessment. This
+                      includes checking for WebGL, TensorFlow.js, camera
+                      availability, required libraries, RAM, and storage.
+                    </p>
+                    {errorMessage && (
+                      <div className="bg-red-50/80 dark:bg-red-900/20 border border-red-200/50 dark:border-red-700/50 text-red-700 dark:text-red-300 p-4 rounded-xl flex items-center gap-3">
+                        <X className="w-5 h-5" />
+                        <span>{errorMessage}</span>
+                      </div>
+                    )}
+                    {browserCompatibility && (
+                      <div className="bg-green-50/80 dark:bg-green-900/20 border border-green-200/50 dark:border-green-700/50 text-green-700 dark:text-green-300 p-4 rounded-xl">
+                        <ul className="space-y-3">
+                          <li className="flex items-center gap-2">
+                            {browserCompatibility.webgl ? (
+                              <Check className="w-5 h-5" />
+                            ) : (
+                              <X className="w-5 h-5 text-red-700 dark:text-red-300" />
+                            )}
+                            <span>WebGL Support</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            {browserCompatibility.tensorflow ? (
+                              <Check className="w-5 h-5" />
+                            ) : (
+                              <X className="w-5 h-5 text-red-700 dark:text-red-300" />
+                            )}
+                            <span>TensorFlow.js Support</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            {browserCompatibility.camera ? (
+                              <Check className="w-5 h-5" />
+                            ) : (
+                              <X className="w-5 h-5 text-red-700 dark:text-red-300" />
+                            )}
+                            <span>Camera Availability</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            {browserCompatibility.libraries ? (
+                              <Check className="w-5 h-5" />
+                            ) : (
+                              <X className="w-5 h-5 text-red-700 dark:text-red-300" />
+                            )}
+                            <span>Required Libraries</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            {browserCompatibility.ram ? (
+                              <Check className="w-5 h-5" />
+                            ) : (
+                              <X className="w-5 h-5 text-red-700 dark:text-red-300" />
+                            )}
+                            <span>RAM Availability (min 4GB)</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            {browserCompatibility.storage ? (
+                              <Check className="w-5 h-5" />
+                            ) : (
+                              <X className="w-5 h-5 text-red-700 dark:text-red-300" />
+                            )}
+                            <span>Storage Availability (min 500MB)</span>
+                          </li>
+                        </ul>
+                      </div>
+                    )}
+                    {compatibilityLoading && (
+                      <div className="flex items-center gap-3 justify-center">
+                        <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                        <span className="text-gray-700 dark:text-gray-200">
+                          Checking browser compatibility...
+                        </span>
+                      </div>
+                    )}
+                    <Button
+                      onClick={handleNextStep}
+                      className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+                      disabled={
+                        compatibilityLoading ||
+                        (browserCompatibility &&
+                          browserCompatibility.webgl &&
+                          browserCompatibility.tensorflow &&
+                          browserCompatibility.camera &&
+                          browserCompatibility.libraries &&
+                          browserCompatibility.ram &&
+                          browserCompatibility.storage)
+                      }
+                    >
+                      Check Compatibility
+                      <ArrowRight className="w-5 h-5" />
+                    </Button>
+                  </div>
+                )}
+
+                {/* Step 7: Start Assessment */}
+                {modalStep === 7 && (
                   <div className="space-y-6 text-base mb-8">
                     <p className="text-gray-900 dark:text-gray-100">
                       All prerequisites are complete. You are ready to start the
@@ -1169,6 +1405,10 @@ const CandidateDashboard = () => {
                         <li className="flex items-center gap-2">
                           <Check className="w-5 h-5" />
                           Face verified
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="w-5 h-5" />
+                          Browser compatibility verified
                         </li>
                       </ul>
                     </div>
@@ -1205,12 +1445,31 @@ const CandidateDashboard = () => {
                         (modalStep === 2 && webcamStream) ||
                         (modalStep === 3 && (modelLoading || modelLoaded)) ||
                         (modalStep === 4 && !webcamStream) ||
-                        (modalStep === 5 && (!webcamStream || faceVerified)) ||
+                        (modalStep === 5 &&
+                          (!webcamStream ||
+                            faceVerified ||
+                            compatibilityLoading)) ||
                         (modalStep === 6 &&
-                          !(cameraVerified && modelLoaded && faceVerified))
+                          (compatibilityLoading ||
+                            (browserCompatibility &&
+                              browserCompatibility.webgl &&
+                              browserCompatibility.tensorflow &&
+                              browserCompatibility.camera &&
+                              browserCompatibility.libraries &&
+                              browserCompatibility.ram &&
+                              browserCompatibility.storage))) ||
+                        (modalStep === 7 &&
+                          !(
+                            cameraVerified &&
+                            modelLoaded &&
+                            faceVerified &&
+                            browserCompatibility?.webgl &&
+                            browserCompatibility?.ram &&
+                            browserCompatibility?.storage
+                          ))
                       }
                     >
-                      {modalStep === 6 ? 'Start Assessment' : 'Next'}
+                      {modalStep === 7 ? 'Start Assessment' : 'Next'}
                       <ArrowRight className="w-5 h-5" />
                     </Button>
                   </div>
@@ -1254,6 +1513,43 @@ const CandidateDashboard = () => {
               </LinkButton>
               <button
                 onClick={() => setIsIneligibleModalOpen(false)}
+                className="bg-gradient-to-r from-gray-500 to-gray-600 text-white px-6 py-3 rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+              >
+                Close
+              </button>
+            </div>
+          </Modal>
+
+          <Modal
+            isOpen={isResourceWarningModalOpen}
+            onRequestClose={() => setIsResourceWarningModalOpen(false)}
+            className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg p-8 rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 max-w-md mx-auto mt-20 outline-none"
+            overlayClassName="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-75 flex justify-center items-center p-4 z-50"
+          >
+            <div className="flex justify-between items-start mb-8">
+              <div className="flex items-center">
+                <div className="p-3 bg-gradient-to-r from-yellow-500 to-orange-600 rounded-xl mr-4">
+                  <AlertTriangle className="w-8 h-8 text-white" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  Resource Warning
+                </h2>
+              </div>
+              <button
+                onClick={() => setIsResourceWarningModalOpen(false)}
+                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-all duration-200"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <p className="text-lg text-gray-700 dark:text-gray-200 mb-8">
+              Your device may not have sufficient RAM (minimum 4GB) or storage
+              (minimum 500MB) to run the assessment smoothly. Please close other
+              applications or browser tabs to free up resources and try again.
+            </p>
+            <div className="flex justify-end gap-4">
+              <button
+                onClick={() => setIsResourceWarningModalOpen(false)}
                 className="bg-gradient-to-r from-gray-500 to-gray-600 text-white px-6 py-3 rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
               >
                 Close

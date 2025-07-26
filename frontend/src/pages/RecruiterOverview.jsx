@@ -32,7 +32,7 @@ const RecruiterOverview = () => {
 
   const links = [
     {
-      name: 'Dashboard',
+      name: 'Jobs Panel',
       link: '/recruiter/dashboard',
       icon: Briefcase,
     },
@@ -263,12 +263,6 @@ const RecruiterOverview = () => {
                     </p>
                   </div>
                 </div>
-                <LinkButton
-                  to="/recruiter/profile"
-                  className="w-fit bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
-                >
-                  Edit Profile
-                </LinkButton>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="flex flex-col gap-3">
@@ -441,7 +435,7 @@ const RecruiterOverview = () => {
                       })}
                     </p>
                     <Button
-                      to={`/recruiter/assessment/${job.job_id}`}
+                      to={`/recruiter/analytics`}
                       className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
                     >
                       View Job
@@ -493,7 +487,7 @@ const RecruiterOverview = () => {
                       Score: {candidate.total_score}%
                     </p>
                     <Link
-                      to={`/recruiter/candidate/${candidate.candidate_id}`}
+                      to={`/recruiter/analytics`}
                       className="inline-block w-full text-center bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
                     >
                       View Details
@@ -566,7 +560,7 @@ const RecruiterOverview = () => {
               Active Jobs: {jobs.active.length}
             </p>
             <Button
-              to="/recruiter/create-assessment"
+              to="/recruiter/dashboard"
               className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
             >
               Create New Job
