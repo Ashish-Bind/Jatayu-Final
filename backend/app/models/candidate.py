@@ -21,6 +21,7 @@ class Candidate(db.Model):
     camera_image = db.Column(db.String(200))
     status = db.Column(db.String(50), default='active')  # e.g., active, inactive, suspended
     block_reason = db.Column(db.String(255), default='')  # Reason for blocking the candidate
+    requires_otp_verification= db.Column(db.Boolean, default=False)
 
 
     # Add relationship to AssessmentAttempt

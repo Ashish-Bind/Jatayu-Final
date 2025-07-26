@@ -279,7 +279,7 @@ const Home = () => {
                 to="/candidate/dashboard"
                 className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
                 variants={buttonVariants}
-                whileHover="hover"
+                whilehover="hover"
               >
                 Go to Dashboard <ArrowRight className="w-5 h-5" />
               </LinkButton>
@@ -291,7 +291,7 @@ const Home = () => {
                   to="/candidate/signup"
                   className="bg-gradient-to-r border-2 border-transparent from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl"
                   variants={buttonVariants}
-                  whileHover="hover"
+                  whilehover="hover"
                 >
                   Get Started as Candidate <ArrowRight className="w-5 h-5" />
                 </LinkButton>
@@ -301,7 +301,7 @@ const Home = () => {
                   to="/recruiter/login"
                   className="border-2 border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400 px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/50 transition-all duration-300"
                   variants={buttonVariants}
-                  whileHover="hover"
+                  whilehover="hover"
                 >
                   Recruiter Login <ChevronRight className="w-5 h-5" />
                 </LinkButton>
@@ -343,7 +343,7 @@ const Home = () => {
                 key={index}
                 className="group bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-2xl hover:scale-105 transition-all duration-300"
                 variants={itemVariants}
-                whileHover={{ scale: 1.05 }}
+                whilehover={{ scale: 1.05 }}
               >
                 <div className="mb-4">{feature.icon}</div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
@@ -390,7 +390,7 @@ const Home = () => {
                 key={step.number}
                 className="text-center bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-2xl hover:scale-105 transition-all duration-300"
                 variants={itemVariants}
-                whileHover={{ scale: 1.05 }}
+                whilehover={{ scale: 1.05 }}
               >
                 <div className="w-12 h-12 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
                   <span className="text-white font-bold text-xl">
@@ -446,7 +446,7 @@ const Home = () => {
                     : ''
                 }`}
                 variants={itemVariants}
-                whileHover={{ scale: 1.05 }}
+                whilehover={{ scale: 1.05 }}
               >
                 {plan.isPopular && (
                   <span className="absolute top-0 right-0 bg-indigo-600 text-white text-xs font-semibold px-3 py-1 rounded-bl-lg rounded-tr-lg">
@@ -483,7 +483,7 @@ const Home = () => {
                       : 'from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'
                   } text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 transition-all duration-300 shadow-lg hover:shadow-xl`}
                   variants={buttonVariants}
-                  whileHover="hover"
+                  whilehover="hover"
                 >
                   {plan.buttonText} <ArrowRight className="w-5 h-5" />
                 </LinkButton>
@@ -525,7 +525,7 @@ const Home = () => {
                 key={testimonial.id}
                 className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-2xl hover:scale-105 transition-all duration-300"
                 variants={itemVariants}
-                whileHover={{ scale: 1.05 }}
+                whilehover={{ scale: 1.05 }}
               >
                 <div className="flex items-center mb-4">
                   <img
@@ -608,7 +608,7 @@ const Home = () => {
                 to="/recruiter/login"
                 className="bg-white text-indigo-600 px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-100 transition-all duration-300 shadow-lg hover:shadow-xl"
                 variants={buttonVariants}
-                whileHover="hover"
+                whilehover="hover"
               >
                 Request Demo <ChevronRight className="w-5 h-5" />
               </Link>
@@ -618,7 +618,7 @@ const Home = () => {
                 to="/candidate/signup"
                 className="bg-gradient-to-r from-indigo-800 to-purple-800 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-900 hover:to-purple-900 transition-all duration-300 shadow-lg hover:shadow-xl"
                 variants={buttonVariants}
-                whileHover="hover"
+                whilehover="hover"
               >
                 Try for Free <ArrowRight className="w-5 h-5" />
               </Link>
@@ -828,7 +828,7 @@ const Home = () => {
                   href={href}
                   className="text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
                   variants={itemVariants}
-                  whileHover={{ scale: 1.2 }}
+                  whilehover={{ scale: 1.2 }}
                 >
                   <span className="sr-only">{label}</span>
                   <Icon className="h-6 w-6" />

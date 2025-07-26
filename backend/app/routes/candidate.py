@@ -1,8 +1,5 @@
 from flask import Blueprint, jsonify, request, session
-import os
-import re
-import difflib
-from app import db
+from app import db, mail
 from app.models.candidate import Candidate
 from app.models.job import JobDescription
 from app.models.required_skill import RequiredSkill
@@ -16,9 +13,13 @@ from app.models.degree_branch import DegreeBranch
 from app.models.resume_json import ResumeJson
 from app.models.recruiter import Recruiter
 from sqlalchemy.exc import IntegrityError
-from datetime import datetime, timezone
-from app.utils.gcs_upload import upload_to_gcs, delete_from_gcs
-from app.utils.face import compare_faces_from_files
+from datetime import datetime, timezone, timedelta
+from app.utils.gcs_upload import upload_to_gcs
+from flask_mail import Message
+from google.cloud import storage
+import os
+import re
+import difflib
 import pytz
 import google.generativeai as genai
 import logging
@@ -26,7 +27,11 @@ from io import BytesIO
 from pdfminer.high_level import extract_text
 from sqlalchemy.orm import joinedload
 import json
+import random
+import string
+from app.utils.face import compare_faces_from_files
 import requests
+from io import BytesIO
 
 candidate_api_bp = Blueprint('candidate_api', __name__, url_prefix='/api/candidate')
 
@@ -37,6 +42,26 @@ logger = logging.getLogger(__name__)
 # Configure Gemini API
 genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
 
+def send_otp_email(email, otp):
+    """Send OTP to the candidate's email using flask_mail."""
+    try:
+        msg = Message(
+            subject='Profile Verification OTP',
+            sender=os.getenv('MAIL_DEFAULT_SENDER'),
+            recipients=[email],
+            body=f"Your OTP for profile verification is: {otp}\nThis OTP is valid for 10 minutes."
+        )
+        mail.send(msg)
+        logger.debug(f"OTP sent to {email}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send OTP to {email}: {str(e)}")
+        return False
+
+def generate_otp(length=6):
+    """Generate a random OTP."""
+    return ''.join(random.choices(string.digits, k=length))
+
 def is_valid_pdf(file):
     """Check if the file is a valid PDF by verifying its magic number."""
     try:
@@ -44,7 +69,7 @@ def is_valid_pdf(file):
         magic = file.read(5)
         file.seek(0)
         return magic == b'%PDF-'
-    except Exception as e:
+    except Exception:
         return False
 
 def extract_text_from_pdf(pdf_file):
@@ -59,7 +84,7 @@ def extract_text_from_pdf(pdf_file):
         else:
             raise ValueError("pdf_file must be a file-like object with a read method.")
         return text
-    except Exception as e:
+    except Exception:
         return None
 
 def analyze_resume(resume_text):
@@ -121,7 +146,7 @@ Resume:
         """
         response = model.generate_content(prompt)
         return response.text
-    except Exception as e:
+    except Exception:
         return None
 
 def parse_json_output(json_string):
@@ -187,7 +212,7 @@ def calculate_total_experience(work_experience):
                 continue
 
             intervals.append((start_date, end_date))
-        except ValueError as e:
+        except ValueError:
             continue
 
     if not intervals:
@@ -274,26 +299,69 @@ def infer_proficiency(skill, work_experience, education, projects):
         proficiency = 4
     return proficiency
 
-def verify_faces(profile_file, webcam_file):
+@candidate_api_bp.route('/auth/send-otp', methods=['POST'])
+def send_otp():
+    """Send OTP to candidate's email."""
+    data = request.get_json()
+    user_id = data.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'Missing user_id'}), 400
+
+    candidate = Candidate.query.filter_by(user_id=user_id).first_or_404()
+    if not candidate.email:
+        return jsonify({'error': 'No email associated with this candidate'}), 400
+
+    otp = generate_otp()
+    session['otp'] = otp
+    session['otp_expiry'] = (datetime.now(timezone.utc) + timedelta(minutes=10)).timestamp()
+    session['otp_user_id'] = user_id
+
+    if send_otp_email(candidate.email, otp):
+        return jsonify({'message': 'OTP sent to your email'}), 200
+    else:
+        return jsonify({'error': 'Failed to send OTP. Please try again.'}), 500
+
+@candidate_api_bp.route('/auth/verify-otp', methods=['POST'])
+def verify_otp():
+    """Verify OTP entered by candidate."""
+    data = request.get_json()
+    user_id = data.get('user_id')
+    otp = data.get('otp')
+
+    if not user_id or not otp:
+        return jsonify({'error': 'Missing user_id or OTP'}), 400
+
+    if 'otp' not in session or 'otp_expiry' not in session or 'otp_user_id' not in session:
+        return jsonify({'error': 'No OTP session found. Please request a new OTP.'}), 400
+
+    if session['otp_user_id'] != user_id:
+        return jsonify({'error': 'Invalid user for this OTP session.'}), 400
+
+    if datetime.now(timezone.utc).timestamp() > session['otp_expiry']:
+        session.pop('otp', None)
+        session.pop('otp_expiry', None)
+        session.pop('otp_user_id', None)
+        return jsonify({'error': 'OTP has expired. Please request a new OTP.'}), 400
+
+    if session['otp'] != otp:
+        return jsonify({'error': 'Invalid OTP.'}), 400
+
+    # Clear the requires_otp_verification flag
+    candidate = Candidate.query.filter_by(user_id=user_id).first_or_404()
+    candidate.requires_otp_verification = False
+    session['otp_verified'] = True
+    session.pop('otp', None)
+    session.pop('otp_expiry', None)
+    session.pop('otp_user_id', None)
+
     try:
-        result = compare_faces_from_files(profile_file, webcam_file)
-
-        confidence = result.get("confidence")
-
-        if confidence is not None:
-            similarity = max(0.0, 100 - float(confidence))
-        else:
-            similarity = 0.0
-
-        return {
-            'verified': result.get("verified", False),
-            'similarity': round(similarity, 2)
-        }
-
+        db.session.commit()
     except Exception as e:
-        print("Face comparison error:", str(e))
-        return {'verified': False, 'similarity': 0.0}
+        db.session.rollback()
+        logger.error(f"Error clearing requires_otp_verification: {str(e)}")
+        return jsonify({'error': 'Failed to verify OTP due to a server error.'}), 500
 
+    return jsonify({'message': 'OTP verified successfully'}), 200
 
 @candidate_api_bp.route('/profile/<int:user_id>', methods=['GET'])
 def get_profile_by_user(user_id):
@@ -327,8 +395,48 @@ def get_profile_by_user(user_id):
         'profile_picture': candidate.profile_picture,
         'camera_image': candidate.camera_image,
         'is_profile_complete': candidate.is_profile_complete,
-        'skills': skills
+        'skills': skills,
+        'requires_otp_verification': candidate.requires_otp_verification
     })
+
+@candidate_api_bp.route('/degrees', methods=['GET'])
+def get_degrees():
+    """Retrieve the list of available degrees."""
+    degrees = Degree.query.all()
+    return jsonify([
+        {'degree_id': degree.degree_id, 'degree_name': degree.degree_name}
+        for degree in degrees
+    ])
+
+@candidate_api_bp.route('/branches', methods=['GET'])
+def get_branches():
+    """Retrieve the list of available degree branches."""
+    branches = DegreeBranch.query.all()
+    return jsonify([
+        {'branch_id': branch.branch_id, 'branch_name': branch.branch_name}
+        for branch in branches
+    ])
+
+def verify_faces(profile_file, webcam_file):
+    try:
+        result = compare_faces_from_files(profile_file, webcam_file)
+
+        confidence = result.get("confidence")
+
+        if confidence is not None:
+            similarity = max(0.0, 100 - float(confidence))
+        else:
+            similarity = 0.0
+
+        return {
+            'verified': result.get("verified", False),
+            'similarity': round(similarity, 2)
+        }
+
+    except Exception as e:
+        print("Face comparison error:", str(e))
+        return {'verified': False, 'similarity': 0.0}
+
 
 @candidate_api_bp.route('/verify-face', methods=['POST'])
 def verify_face():
@@ -364,27 +472,17 @@ def verify_face():
         print("Face verification API error:", str(e))
         return jsonify({'success': False, 'error': str(e)}), 500
     
-@candidate_api_bp.route('/degrees', methods=['GET'])
-def get_degrees():
-    """Retrieve the list of available degrees."""
-    degrees = Degree.query.all()
-    return jsonify([
-        {'degree_id': degree.degree_id, 'degree_name': degree.degree_name}
-        for degree in degrees
-    ])
-
-@candidate_api_bp.route('/branches', methods=['GET'])
-def get_branches():
-    """Retrieve the list of available degree branches."""
-    branches = DegreeBranch.query.all()
-    return jsonify([
-        {'branch_id': branch.branch_id, 'branch_name': branch.branch_name}
-        for branch in branches
-    ])
 
 @candidate_api_bp.route('/profile/<int:user_id>', methods=['POST'])
 def update_profile(user_id):
     candidate = Candidate.query.filter_by(user_id=user_id).first_or_404()
+
+    # Check if OTP verification is required and verified
+    logger.debug(f"📸 Requires OTP Verification: {candidate.requires_otp_verification}, Session OTP Verified: {session.get('otp_verified')}")
+
+    if candidate.requires_otp_verification and session.get('otp_verified', False) is not True:
+        logger.debug(f"❌ OTP verification required but not verified for user_id={user_id}")
+        return jsonify({'error': 'OTP verification required. Please verify OTP before updating profile.'}), 403
 
     form_name = request.form.get('name')
     form_phone = request.form.get('phone')
@@ -398,10 +496,6 @@ def update_profile(user_id):
     resume_file = request.files.get('resume')
     profile_pic_file = request.files.get('profile_picture')
     webcam_image_file = request.files.get('webcam_image')
-
-    # ✅ Get enforce_face_verification flag from frontend
-    enforce_face_verification = request.form.get('enforce_face_verification', 'false') == 'true'
-    logger.debug(f"📸 Enforce Face Verification: {enforce_face_verification}")
 
     if not form_name or not form_experience or not form_degree_id:
         return jsonify({'error': 'Name, years of experience, and degree are required.'}), 400
@@ -423,27 +517,10 @@ def update_profile(user_id):
         return jsonify({'error': 'Invalid degree branch selected.'}), 400
 
     try:
-        face_verification_result = None
-
-        if enforce_face_verification:
-            logger.debug(f"✅ Face verification enforced by backend.")
-            if profile_pic_file and webcam_image_file:
-                face_verification_result = verify_faces(profile_pic_file, webcam_image_file)
-                logger.debug(f"✅ Face verification result: {face_verification_result}")
-                if not face_verification_result['verified']:
-                    return jsonify({
-                        'error': f'Face verification failed: Images do not match with 70% similarity ({face_verification_result["similarity"]}% similarity).'
-                    }), 400
-                profile_pic_file.seek(0)
-                webcam_image_file.seek(0)
-            else:
-                logger.debug(f"❌ Missing profile picture or webcam image for verification.")
-                return jsonify({'error': 'Both profile picture and webcam image are required for verification.'}), 400
-        else:
-            logger.debug(f"✅ Face verification skipped as enforce_face_verification = False.")
-
-        # ✅ Validate and process resume if provided
+        # Validate name and phone against resume data
         parsed_data = None
+        resume_json_entry = ResumeJson.query.filter_by(candidate_id=candidate.candidate_id).order_by(ResumeJson.created_at.desc()).first()
+
         if resume_file:
             resume_text = extract_text_from_pdf(resume_file)
             if not resume_text:
@@ -457,37 +534,96 @@ def update_profile(user_id):
             if not parsed_data:
                 return jsonify({'error': 'Failed to parse Gemini API output.'}), 400
 
-            # Clean the gemini_output to remove markdown formatting and store as valid JSON string
-            cleaned_resume = parse_json_output(gemini_output)
-            if not cleaned_resume:
-                return jsonify({'error': 'Failed to parse Gemini API output for storage.'}), 400
-            cleaned_resume_string = json.dumps(cleaned_resume)
+            # Store the JSON string in resume_json table
+            cleaned_resume_string = json.dumps(parsed_data)
+            if resume_json_entry:
+                resume_json_entry.raw_resume = cleaned_resume_string
+            else:
+                resume_json_entry = ResumeJson(
+                    candidate_id=candidate.candidate_id,
+                    raw_resume=cleaned_resume_string
+                )
+                db.session.add(resume_json_entry)
 
-            # Store cleaned JSON in resume_json table
-            resume_json_entry = ResumeJson(
-                candidate_id=candidate.candidate_id,
-                raw_resume=cleaned_resume_string
-            )
-            db.session.add(resume_json_entry)
+            # Upload new resume to GCS
+            resume_file.seek(0)
+            resume_filename = f"uploads/resumes/{candidate.candidate_id}_{resume_file.filename}"
+            resume_url = upload_to_gcs(resume_file, resume_filename, content_type='application/pdf')
+            candidate.resume = resume_filename
+        elif candidate.resume:
+            try:
+                storage_client = storage.Client()
+                bucket = storage_client.bucket('gen-ai-quiz')
+                gcs_paths = [
+                    f"uploads/{candidate.resume}" if not candidate.resume.startswith('uploads/') else candidate.resume,
+                    candidate.resume
+                ]
+                blob = None
+                gcs_resume_path = None
 
-            resume_name = parsed_data.get("name", "")
-            resume_phone = normalize_phone_number(parsed_data.get("phone", ""))
-            if not compare_strings(form_name, resume_name):
-                return jsonify({'error': 'Name in form does not match resume name (80% similarity required). Please verify.'}), 400
-            if resume_phone and form_phone and resume_phone != normalize_phone_number(form_phone):
-                return jsonify({'error': 'Phone number in form does not match resume. Please verify.'}), 400
+                for path in gcs_paths:
+                    logger.debug(f"Attempting to fetch resume from GCS: gs://gen-ai-quiz/{path}")
+                    blob = bucket.get_blob(path)
+                    if blob:
+                        gcs_resume_path = path
+                        break
 
-            resume_experience = calculate_total_experience(parsed_data.get("Work Experience", []))
-            if form_experience > 0 and resume_experience == 0:
-                return jsonify({'error': 'No work experience found in resume, but form claims experience. Please verify.'}), 400
-            elif form_experience > 0:
-                min_allowed = 0.8 * form_experience
-                if not (min_allowed <= resume_experience):
-                    return jsonify({
-                        'error': f'Resume experience ({resume_experience:.2f} years) does not match form input ({form_experience:.2f} years). It should be at least 80% of the stated experience.'
-                    }), 400
+                if not blob:
+                    logger.error(f"Resume not found in GCS at paths: {', '.join(gcs_paths)}")
+                    return jsonify({'error': 'Resume not found in storage. Please upload a new resume.'}), 404
 
-        # ✅ All validations passed, now update candidate and save files
+                resume_content = BytesIO()
+                blob.download_to_file(resume_content)
+                resume_content.seek(0)
+                logger.debug(f"Successfully downloaded resume from gs://gen-ai-quiz/{gcs_resume_path}")
+
+                resume_text = extract_text_from_pdf(resume_content)
+                if not resume_text:
+                    logger.error(f"Failed to extract text from resume at {gcs_resume_path}")
+                    return jsonify({'error': 'Failed to extract text from stored resume.'}), 400
+
+                gemini_output = analyze_resume(resume_text)
+                if not gemini_output:
+                    logger.error(f"Failed to parse resume with Gemini API for {gcs_resume_path}")
+                    return jsonify({'error': 'Failed to parse stored resume with Gemini API.'}), 400
+
+                parsed_data = parse_json_output(gemini_output)
+                if not parsed_data:
+                    logger.error(f"Failed to parse Gemini API output for {gcs_resume_path}")
+                    return jsonify({'error': 'Failed to parse Gemini API output for stored resume.'}), 400
+
+                cleaned_resume_string = json.dumps(parsed_data)
+                if resume_json_entry:
+                    resume_json_entry.raw_resume = cleaned_resume_string
+                else:
+                    resume_json_entry = ResumeJson(
+                        candidate_id=candidate.candidate_id,
+                        raw_resume=cleaned_resume_string
+                    )
+                    db.session.add(resume_json_entry)
+            except Exception as e:
+                logger.error(f"Error loading resume from GCS: {str(e)}")
+                return jsonify({'error': f'Error loading resume from storage: {str(e)}'}), 500
+        else:
+            return jsonify({'error': 'No resume found. Please upload a resume.'}), 400
+
+        resume_name = parsed_data.get("name", "")
+        resume_phone = normalize_phone_number(parsed_data.get("phone", ""))
+        if not compare_strings(form_name, resume_name):
+            return jsonify({'error': 'Name in form does not match resume name (80% similarity required). Please verify.'}), 400
+        if resume_phone and form_phone and resume_phone != normalize_phone_number(form_phone):
+            return jsonify({'error': 'Phone number in form does not match resume. Please verify.'}), 400
+
+        resume_experience = calculate_total_experience(parsed_data.get("Work Experience", []))
+        if form_experience > 0 and resume_experience == 0:
+            return jsonify({'error': 'No work experience found in resume, but form claims experience. Please verify.'}), 400
+        elif form_experience > 0:
+            min_allowed = 0.8 * form_experience
+            if not (min_allowed <= resume_experience):
+                return jsonify({
+                    'error': f'Resume experience ({resume_experience:.2f} years) does not match form input ({form_experience:.2f} years). It should be at least 80% of the stated experience.'
+                }), 400
+
         candidate.name = form_name
         candidate.phone = normalize_phone_number(form_phone)
         candidate.location = form_location
@@ -499,12 +635,6 @@ def update_profile(user_id):
         candidate.years_of_experience = form_experience
 
         if resume_file:
-            resume_file.seek(0)  # reset stream before upload
-            resume_filename = f"resumes/{candidate.candidate_id}_{resume_file.filename}"
-            resume_url = upload_to_gcs(resume_file, resume_filename, content_type='application/pdf')
-            candidate.resume = resume_filename
-
-            # Update skills
             skills_data = parsed_data.get("Skills", {})
             work_experience = parsed_data.get("Work Experience", [])
             projects = parsed_data.get("Projects", [])
@@ -545,23 +675,34 @@ def update_profile(user_id):
                     db.session.add(candidate_skill)
 
         if profile_pic_file:
-            profile_pic_filename = f"profile_pics/{candidate.candidate_id}_{profile_pic_file.filename}"
+            profile_pic_filename = f"uploads/profile_pics/{candidate.candidate_id}_{profile_pic_file.filename}"
             profile_pic_url = upload_to_gcs(profile_pic_file, profile_pic_filename, content_type='image/jpeg')
             candidate.profile_picture = profile_pic_filename
 
         if webcam_image_file:
-            webcam_image_filename = f"webcam_images/{candidate.candidate_id}_{webcam_image_file.filename}"
+            webcam_image_filename = f"uploads/webcam_images/{candidate.candidate_id}_{webcam_image_file.filename}"
             webcam_image_url = upload_to_gcs(webcam_image_file, webcam_image_filename, content_type='image/jpeg')
             candidate.camera_image = webcam_image_filename
 
         candidate.is_profile_complete = True
+        candidate.requires_otp_verification = False  # Clear the flag after successful update
         db.session.add(candidate)
         db.session.commit()
+
+        # Clear OTP verification status and related session data after successful update
+        session.pop('otp_verified', None)
+        session.pop('enforce_otp_verification', None)
+        session.pop('otp', None)
+        session.pop('otp_expiry', None)
+        session.pop('otp_user_id', None)
 
         logger.debug(f"✅ Profile updated successfully for candidate_id={candidate.candidate_id}")
         return jsonify({
             'message': 'Profile updated successfully',
-            'face_verification': face_verification_result
+            'parsed_data': {
+                'name': parsed_data.get('name', ''),
+                'phone': parsed_data.get('phone', '')
+            }
         }), 200
 
     except IntegrityError as e:
@@ -582,13 +723,11 @@ def update_profile(user_id):
         logger.error(f"❌ Unexpected error: {str(e)}")
         return jsonify({'error': f'An unexpected error occurred: {str(e)}'}), 500
 
-
 @candidate_api_bp.route('/eligible-assessments/<int:user_id>', methods=['GET'])
 def get_eligible_assessments(user_id):
     """Retrieve eligible and all assessments for a candidate."""
     candidate = Candidate.query.filter_by(user_id=user_id).first_or_404()
 
-    # Current date and time in UTC
     current_time = datetime.now(pytz.UTC)
 
     assessments = JobDescription.query.options(
@@ -600,14 +739,12 @@ def get_eligible_assessments(user_id):
     all_assessments = []
     attempted_assessments = set()
 
-    # Check for completed or started attempts
     attempts = AssessmentAttempt.query.filter_by(candidate_id=candidate.candidate_id).all()
     for attempt in attempts:
         if attempt.status in ['started', 'completed']:
             attempted_assessments.add(attempt.job_id)
 
     for assessment in assessments:
-        # Convert schedule_start and schedule_end to offset-aware datetime with UTC
         schedule_start = assessment.schedule_start
         if schedule_start and schedule_start.tzinfo is None:
             schedule_start = schedule_start.replace(tzinfo=pytz.UTC)
@@ -615,7 +752,6 @@ def get_eligible_assessments(user_id):
         if schedule_end and schedule_end.tzinfo is None:
             schedule_end = schedule_end.replace(tzinfo=pytz.UTC)
 
-        # Skip if past schedule_end and no attempt exists
         if schedule_end and current_time > schedule_end:
             has_attempt = AssessmentAttempt.query.filter_by(
                 candidate_id=candidate.candidate_id,
@@ -624,7 +760,6 @@ def get_eligible_assessments(user_id):
             if not has_attempt:
                 continue
 
-        # Check eligibility
         experience_match = (
             assessment.experience_min <= candidate.years_of_experience <= assessment.experience_max
         )
@@ -676,7 +811,6 @@ def get_eligible_assessments(user_id):
         if assessment_data['is_eligible'] and candidate.is_profile_complete:
             eligible_assessments.append(assessment_data)
 
-    # Fetch attempted assessments
     attempted_assessments_data = []
     for attempt in attempts:
         if attempt.status in ['started', 'completed']:
@@ -712,7 +846,6 @@ def register_assessment():
     candidate = Candidate.query.filter_by(user_id=candidate_id).first_or_404()
     job = JobDescription.query.get_or_404(job_id)
 
-    # Check eligibility
     experience_match = (
         job.experience_min <= candidate.years_of_experience <= job.experience_max
     )
@@ -779,7 +912,6 @@ def start_assessment():
     if not candidate_id or not job_id:
         return jsonify({'error': 'Missing candidate_id or job_id'}), 400
 
-    # Check if assessment is registered
     registration = AssessmentRegistration.query.filter_by(
         candidate_id=candidate_id,
         job_id=job_id
@@ -787,7 +919,6 @@ def start_assessment():
     if not registration:
         return jsonify({'error': 'Candidate not registered for this assessment'}), 403
 
-    # Check schedule
     job = JobDescription.query.get_or_404(job_id)
     current_time = datetime.now(timezone.utc)
     schedule_start = job.schedule_start
@@ -802,7 +933,6 @@ def start_assessment():
     if schedule_end and current_time > schedule_end:
         return jsonify({'error': f'Assessment period has ended. Ended at {schedule_end.isoformat()}'}), 403
 
-    # Check for existing attempt
     existing_attempt = AssessmentAttempt.query.filter_by(
         candidate_id=candidate_id,
         job_id=job_id,

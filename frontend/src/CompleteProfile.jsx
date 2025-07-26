@@ -49,13 +49,17 @@ const CompleteProfile = () => {
   const [message, setMessage] = useState({ text: '', type: '' })
   const [isLoading, setIsLoading] = useState(false)
   const [isWebcamActive, setIsWebcamActive] = useState(false)
-  const [enforceFaceVerification, setEnforceFaceVerification] = useState(false)
+  const [enforceOtpVerification, setEnforceOtpVerification] = useState(false)
+  const [otp, setOtp] = useState('')
+  const [otpSent, setOtpSent] = useState(false)
+  const [otpVerified, setOtpVerified] = useState(false)
   const navigate = useNavigate()
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
   const streamRef = useRef(null)
 
   useEffect(() => {
+    // Fetch profile data
     fetch(`${baseUrl}/candidate/profile/${user.id}`, {
       credentials: 'include',
     })
@@ -87,6 +91,13 @@ const CompleteProfile = () => {
             `https://storage.googleapis.com/gen-ai-quiz/uploads/${data.camera_image}`
           )
         }
+        setEnforceOtpVerification(data.requires_otp_verification)
+        if (data.requires_otp_verification) {
+          setMessage({
+            text: "New location detected. Please verify it's you by requesting an OTP.",
+            type: 'info',
+          })
+        }
       })
       .catch((error) => {
         console.error('Error fetching candidate:', error)
@@ -96,20 +107,7 @@ const CompleteProfile = () => {
         })
       })
 
-    fetch(`${baseUrl}/auth/check`, { credentials: 'include' })
-      .then((response) => {
-        if (!response.ok) throw new Error('Failed to check auth')
-        return response.json()
-      })
-      .then((data) => {
-        if (data.user && data.user.enforce_face_verification) {
-          setEnforceFaceVerification(true)
-        }
-      })
-      .catch((error) => {
-        console.error('Error checking face verification requirement:', error)
-      })
-
+    // Fetch degrees
     fetch(`${baseUrl}/candidate/degrees`, { credentials: 'include' })
       .then((response) => {
         if (!response.ok) throw new Error('Failed to fetch degrees')
@@ -131,6 +129,7 @@ const CompleteProfile = () => {
         })
       })
 
+    // Fetch branches
     fetch(`${baseUrl}/candidate/branches`, { credentials: 'include' })
       .then((response) => {
         if (!response.ok) throw new Error('Failed to fetch branches')
@@ -152,6 +151,7 @@ const CompleteProfile = () => {
         })
       })
 
+    // Cleanup webcam stream
     return () => {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop())
@@ -165,9 +165,79 @@ const CompleteProfile = () => {
     }
   }, [isWebcamActive])
 
+  const requestOtp = async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch(`${baseUrl}/candidate/auth/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ user_id: user.id }),
+      })
+      const result = await response.json()
+      if (response.ok) {
+        setOtpSent(true)
+        setMessage({
+          text: 'OTP sent to your email. Please check your inbox.',
+          type: 'success',
+        })
+      } else {
+        setMessage({
+          text: result.error || 'Failed to send OTP. Please try again.',
+          type: 'error',
+        })
+      }
+    } catch (error) {
+      console.error('Error requesting OTP:', error)
+      setMessage({
+        text: 'An unexpected error occurred while requesting OTP.',
+        type: 'error',
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const verifyOtp = async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch(`${baseUrl}/candidate/auth/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ user_id: user.id, otp }),
+      })
+      const result = await response.json()
+      if (response.ok) {
+        setOtpVerified(true)
+        setMessage({
+          text: 'OTP verified successfully! You can now update your profile.',
+          type: 'success',
+        })
+      } else {
+        setMessage({
+          text: result.error || 'Invalid OTP. Please try again.',
+          type: 'error',
+        })
+      }
+    } catch (error) {
+      console.error('Error verifying OTP:', error)
+      setMessage({
+        text: 'An unexpected error occurred while verifying OTP.',
+        type: 'error',
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const handleChange = (e) => {
     const { name, value } = e.target
     setFormData({ ...formData, [name]: value })
+  }
+
+  const handleOtpChange = (e) => {
+    setOtp(e.target.value)
   }
 
   const handleDegreeChange = (selectedOption) => {
@@ -300,9 +370,17 @@ const CompleteProfile = () => {
       return false
     }
 
-    if (enforceFaceVerification && (!profilePicture || !webcamImage)) {
+    if (enforceOtpVerification && !otpVerified) {
       setMessage({
-        text: 'Both profile picture and webcam image are required for verification.',
+        text: 'Please verify OTP before updating your profile.',
+        type: 'error',
+      })
+      return false
+    }
+
+    if (!candidate.resume && !resume) {
+      setMessage({
+        text: 'Please upload a resume.',
         type: 'error',
       })
       return false
@@ -330,7 +408,6 @@ const CompleteProfile = () => {
     if (resume) data.append('resume', resume)
     if (profilePicture) data.append('profile_picture', profilePicture)
     if (webcamImage) data.append('webcam_image', webcamImage)
-    data.append('enforce_face_verification', enforceFaceVerification)
 
     try {
       const response = await fetch(`${baseUrl}/candidate/profile/${user.id}`, {
@@ -342,11 +419,7 @@ const CompleteProfile = () => {
       const result = await response.json()
       if (response.ok) {
         setMessage({
-          text: `Profile updated successfully! ${
-            result.face_verification
-              ? `Face verification: ${result.face_verification.similarity}% similarity.`
-              : ''
-          }`,
+          text: 'Profile updated successfully!',
           type: 'success',
         })
         setTimeout(() => navigate('/candidate/dashboard'), 1500)
@@ -383,7 +456,7 @@ const CompleteProfile = () => {
       <Navbar />
       <div className="flex-grow py-10 px-2 sm:px-10 lg:px-24">
         <div className="max-w-7xl mx-auto bg-white dark:bg-gray-900 rounded-2xl shadow-md border border-gray-200 dark:border-gray-800 flex flex-col md:flex-row">
-          <div className="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-800 p-10 flex flex-col items-center gap-8">
+          <div className="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700 p-10 flex flex-col items-center gap-8">
             <div className="relative w-28 h-28 mb-4 group">
               <div className="w-full h-full rounded-full overflow-hidden border-4 border-indigo-500 dark:border-indigo-600 group-hover:border-indigo-600 dark:group-hover:border-indigo-500 shadow-sm transition-all">
                 {profilePreview ? (
@@ -410,6 +483,9 @@ const CompleteProfile = () => {
                   className="hidden"
                   accept="image/*"
                   onChange={handleFileChange}
+                  disabled={
+                    isLoading || (enforceOtpVerification && !otpVerified)
+                  }
                 />
               </label>
             </div>
@@ -425,12 +501,23 @@ const CompleteProfile = () => {
               <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-2">
                 My Email Address
               </h3>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/30">
-                  <Mail className="w-5 h-5 text-indigo-600 dark:text-indigo-300" />
-                </div>
-                <span className="text-sm text-gray-700 dark:text-gray-200">
-                  {candidate?.email || user?.email}
+              <div className="flex items-center gap-2 mb-2">
+                <span className="inline-flex items-center">
+                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/30">
+                    <svg
+                      className="w-4 h-4 text-indigo-600 dark:text-indigo-300"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      viewBox="0 0 24 24"
+                    >
+                      <path d="M4 4h16v16H4z" stroke="none" />
+                      <path d="M22 6l-10 7L2 6" />
+                    </svg>
+                  </span>
+                  <span className="text-sm text-gray-700 dark:text-gray-200 ml-2">
+                    {candidate?.email || user?.email}
+                  </span>
                 </span>
               </div>
             </div>
@@ -466,7 +553,7 @@ const CompleteProfile = () => {
           </div>
           <div className="w-full md:w-2/3 p-10">
             <div className="mb-10">
-              <h1 className="text-3xl md:text-4xl font-extrabold mb-3 tracking-tight flex items-center gap-3 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent">
+              <h1 className="text-3xl md:text-3xl font-extrabold mb-3 tracking-tight flex items-center gap-3 bg-gradient-to-r from-indigo-600 via-purple to-indigo-800 bg-clip-text text-transparent">
                 {candidate.is_profile_complete
                   ? 'Edit Your Profile'
                   : 'Complete Your Profile'}
@@ -474,53 +561,149 @@ const CompleteProfile = () => {
               </h1>
               <p className="text-lg text-gray-700 dark:text-gray-200 font-medium">
                 {candidate.is_profile_complete
-                  ? 'Update your details to keep your profile current and access more job opportunities'
-                  : 'Fill in your details to get the most out of our platform'}
+                  ? 'Update your details to keep your profile current and access more job opportunities.'
+                  : 'Fill in your details to get the most out of our platform.'}
               </p>
-              {enforceFaceVerification && (
-                <p className="text-base text-red-500 font-semibold mt-2">
-                  Face verification required due to location change.
-                </p>
-              )}
             </div>
             {message.text && (
               <div
                 className={`mb-6 p-3 rounded-md flex items-center text-base ${
                   message.type === 'success'
-                    ? 'bg-green-50 dark:bg-green-900/30 border-l-4 border-green-500 text-green-700 dark:text-green-300'
-                    : 'bg-red-50 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300'
+                    ? 'bg-green-100 dark:bg-green-800 border border-green-500 text-green-700 dark:text-green-300'
+                    : message.type === 'info'
+                    ? 'bg-blue-100 dark:bg-blue-800 border border-blue-500 text-blue-700 dark:text-blue-300'
+                    : 'bg-red-100 dark:bg-red-800 border border-red-500 dark:border-red-400 text-red-700 dark:text-red-300'
                 }`}
               >
                 {message.type === 'success' ? (
                   <Check className="w-4 h-4 mr-2" />
+                ) : message.type === 'info' ? (
+                  <svg
+                    className="w-4 h-4 mr-2"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
                 ) : (
                   <X className="w-4 h-4 mr-2" />
                 )}
                 {message.text}
               </div>
             )}
-            <form onSubmit={handleSubmit} className="space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8">
+            {enforceOtpVerification && !otpVerified && (
+              <div className="mb-8 p-6 bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center">
+                  <Mail className="w-5 h-5 mr-2 text-indigo-600 dark:text-indigo-400" />
+                  Verify Your Identity
+                </h3>
+                <p className="text-base text-gray-700 dark:text-gray-200 mb-4">
+                  New location detected. Please verify it's you by requesting an
+                  OTP.
+                </p>
+                {!otpSent ? (
+                  <button
+                    type="button"
+                    onClick={requestOtp}
+                    className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-2 rounded-md flex items-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                        Sending OTP...
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="w-4 h-4 mr-2" />
+                        Send OTP to Email
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <label
+                        htmlFor="otp"
+                        className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
+                      >
+                        <span className="flex items-center">
+                          <Mail className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" />
+                          Enter OTP
+                        </span>
+                      </label>
+                      <input
+                        type="text"
+                        id="otp"
+                        value={otp}
+                        onChange={handleOtpChange}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-700 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-500"
+                        placeholder="Enter 6-digit OTP"
+                        maxLength={6}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={verifyOtp}
+                        className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-6 py-2 rounded-md flex items-center hover:from-green-700 hover:to-emerald-700 transition-all duration-300"
+                        disabled={isLoading || !otp.length}
+                      >
+                        {isLoading ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            Verifying...
+                          </>
+                        ) : (
+                          <>
+                            <Check className="w-4 h-4 mr-2" />
+                            Verify OTP
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={requestOtp}
+                        className="text-indigo-600 dark:text-indigo-400 hover:underline flex items-center"
+                        disabled={isLoading}
+                      >
+                        Resend OTP
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            <form
+              onSubmit={handleSubmit}
+              encType="multipart/form-data"
+              className="space-y-6"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label
                     htmlFor="name"
                     className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
                   >
                     <span className="flex items-center">
-                      <User className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                      <User className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" />
                       Full Name
-                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
                   <input
                     type="text"
                     name="name"
-                    id="name"
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300"
-                    placeholder="John Doe"
                     value={formData.name}
                     onChange={handleChange}
-                    required
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-700 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-500"
+                    placeholder="Your Full Name"
+                    disabled={
+                      isLoading || (enforceOtpVerification && !otpVerified)
+                    }
                   />
                 </div>
                 <div>
@@ -529,64 +712,66 @@ const CompleteProfile = () => {
                     className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
                   >
                     <span className="flex items-center">
-                      <Phone className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                      <Phone className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" />
                       Phone Number
-                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
                   <input
-                    type="text"
+                    type="tel"
                     name="phone"
-                    id="phone"
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300"
-                    placeholder="+1234567890"
                     value={formData.phone}
                     onChange={handleChange}
-                    required
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-700 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-500"
+                    placeholder="+91 123 456 7890"
+                    disabled={
+                      isLoading || (enforceOtpVerification && !otpVerified)
+                    }
                   />
                 </div>
-                <div>
-                  <label
-                    htmlFor="location"
-                    className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
-                  >
-                    <span className="flex items-center">
-                      <MapPin className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
-                      Location
-                      <span className="text-red-500 ml-1">*</span>
-                    </span>
-                  </label>
-                  <input
-                    type="text"
-                    name="location"
-                    id="location"
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300"
-                    placeholder="New York, NY"
-                    value={formData.location}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
+              </div>
+              <div>
+                <label
+                  htmlFor="location"
+                  className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
+                >
+                  <span className="flex items-center">
+                    <MapPin className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" />
+                    Location
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  name="location"
+                  value={formData.location}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-700 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-500"
+                  placeholder="City, Country"
+                  disabled={
+                    isLoading || (enforceOtpVerification && !otpVerified)
+                  }
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label
                     htmlFor="linkedin"
                     className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
                   >
                     <span className="flex items-center">
-                      <Linkedin className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                      <Linkedin className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" />
                       LinkedIn Profile
-                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
                   <input
                     type="url"
                     name="linkedin"
-                    id="linkedin"
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300"
-                    placeholder="https://linkedin.com/in/johndoe"
                     value={formData.linkedin}
                     onChange={handleChange}
-                    required
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-700 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-500"
+                    placeholder="https://linkedin.com/in/your-profile"
+                    disabled={
+                      isLoading || (enforceOtpVerification && !otpVerified)
+                    }
                   />
                 </div>
                 <div>
@@ -595,80 +780,110 @@ const CompleteProfile = () => {
                     className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
                   >
                     <span className="flex items-center">
-                      <Github className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                      <Github className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" />
                       GitHub Profile
-                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
                   <input
                     type="url"
                     name="github"
-                    id="github"
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300"
-                    placeholder="https://github.com/johndoe"
                     value={formData.github}
                     onChange={handleChange}
-                    required
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-700 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-500"
+                    placeholder="https://github.com/your-profile"
+                    disabled={
+                      isLoading || (enforceOtpVerification && !otpVerified)
+                    }
                   />
                 </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label
                     htmlFor="degree_id"
                     className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
                   >
                     <span className="flex items-center">
-                      <GraduationCap className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                      <GraduationCap className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" />
                       Degree
-                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
                   <Select
                     options={degrees}
-                    value={
-                      degrees.find(
-                        (option) => option.value === formData.degree_id
-                      ) || null
-                    }
+                    value={degrees.find((d) => d.value === formData.degree_id)}
                     onChange={handleDegreeChange}
-                    placeholder="Select your degree..."
                     className="text-base"
-                    classNamePrefix="react-select"
+                    placeholder="Select your degree"
+                    isDisabled={
+                      isLoading || (enforceOtpVerification && !otpVerified)
+                    }
                     styles={{
-                      control: (provided) => ({
+                      control: (provided, state) => ({
                         ...provided,
-                        borderColor: '#e5e7eb',
-                        borderRadius: '0.375rem',
-                        padding: '2px',
-                        backgroundColor: '#fff',
-                        '&:hover': { borderColor: '#6366f1' },
+                        backgroundColor: state.isFocused
+                          ? '#ffffff'
+                          : '#f9fafb',
+                        borderColor: state.isFocused ? '#4f46e5' : '#d1d5db',
+                        color: '#1f2937',
+                        '&:hover': {
+                          borderColor: '#4f46e5',
+                        },
+                        '.dark &': {
+                          backgroundColor: '#1f2937',
+                          borderColor: '#4b5563',
+                          color: '#e5e7eb',
+                          '&:hover': {
+                            borderColor: '#4f46e5',
+                          },
+                        },
+                      }),
+                      singleValue: (provided) => ({
+                        ...provided,
+                        color: '#1f2937',
+                        '.dark &': {
+                          color: '#e5e7eb',
+                        },
                       }),
                       menu: (provided) => ({
                         ...provided,
-                        backgroundColor: '#fff',
+                        backgroundColor: '#ffffff',
+                        color: '#1f2937',
+                        '.dark &': {
+                          backgroundColor: '#1f2937',
+                          color: '#e5e7eb',
+                        },
                       }),
                       option: (provided, state) => ({
                         ...provided,
                         backgroundColor: state.isSelected
-                          ? '#6366f1'
+                          ? '#4f46e5'
                           : state.isFocused
-                          ? '#e0e7ff'
-                          : '#fff',
-                        color: state.isSelected ? '#fff' : '#374151',
+                          ? '#f3f4f6'
+                          : '#ffffff',
+                        color: state.isSelected ? '#ffffff' : '#1f2937',
+                        '&:hover': {
+                          backgroundColor: '#f3f4f6',
+                        },
+                        '.dark &': {
+                          backgroundColor: state.isSelected
+                            ? '#4f46e5'
+                            : state.isFocused
+                            ? '#374151'
+                            : '#1f2937',
+                          color: '#e5e7eb',
+                          '&:hover': {
+                            backgroundColor: '#374151',
+                          },
+                        },
                       }),
-                      singleValue: (provided) => ({
+                      placeholder: (provided) => ({
                         ...provided,
-                        color: '#374151',
+                        color: '#6b7280',
+                        '.dark &': {
+                          color: '#9ca3af',
+                        },
                       }),
                     }}
-                    theme={(theme) => ({
-                      ...theme,
-                      colors: {
-                        ...theme.colors,
-                        primary: '#6366f1',
-                        primary25: '#e0e7ff',
-                      },
-                    })}
-                    required
                   />
                 </div>
                 <div>
@@ -677,83 +892,110 @@ const CompleteProfile = () => {
                     className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
                   >
                     <span className="flex items-center">
-                      <GraduationCap className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                      <GraduationCap className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" />
                       Branch/Specialization
-                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
-                  {console.log(formData)}
                   <Select
                     options={branches}
-                    value={
-                      branches.find(
-                        (option) => option.value === formData.branch_id
-                      ) || null
-                    }
+                    value={branches.find((b) => b.value === formData.branch_id)}
                     onChange={handleBranchChange}
-                    placeholder="Select your branch..."
                     className="text-base"
-                    classNamePrefix="react-select"
+                    placeholder="Select your branch"
+                    isDisabled={
+                      isLoading || (enforceOtpVerification && !otpVerified)
+                    }
                     styles={{
-                      control: (provided) => ({
+                      control: (provided, state) => ({
                         ...provided,
-                        borderColor: '#e5e7eb',
-                        borderRadius: '0.375rem',
-                        padding: '2px',
-                        backgroundColor: '#fff',
-                        '&:hover': { borderColor: '#6366f1' },
+                        backgroundColor: state.isFocused
+                          ? '#ffffff'
+                          : '#f9fafb',
+                        borderColor: state.isFocused ? '#4f46e5' : '#d1d5db',
+                        color: '#1f2937',
+                        '&:hover': {
+                          borderColor: '#4f46e5',
+                        },
+                        '.dark &': {
+                          backgroundColor: '#1f2937',
+                          borderColor: '#4b5563',
+                          color: '#e5e7eb',
+                          '&:hover': {
+                            borderColor: '#4f46e5',
+                          },
+                        },
+                      }),
+                      singleValue: (provided) => ({
+                        ...provided,
+                        color: '#1f2937',
+                        '.dark &': {
+                          color: '#e5e7eb',
+                        },
                       }),
                       menu: (provided) => ({
                         ...provided,
-                        backgroundColor: '#fff',
+                        backgroundColor: '#ffffff',
+                        color: '#1f2937',
+                        '.dark &': {
+                          backgroundColor: '#1f2937',
+                          color: '#e5e7eb',
+                        },
                       }),
                       option: (provided, state) => ({
                         ...provided,
                         backgroundColor: state.isSelected
-                          ? '#6366f1'
+                          ? '#4f46e5'
                           : state.isFocused
-                          ? '#e0e7ff'
-                          : '#fff',
-                        color: state.isSelected ? '#fff' : '#374151',
+                          ? '#f3f4f6'
+                          : '#ffffff',
+                        color: state.isSelected ? '#ffffff' : '#1f2937',
+                        '&:hover': {
+                          backgroundColor: '#f3f4f6',
+                        },
+                        '.dark &': {
+                          backgroundColor: state.isSelected
+                            ? '#4f46e5'
+                            : state.isFocused
+                            ? '#374151'
+                            : '#1f2937',
+                          color: '#e5e7eb',
+                          '&:hover': {
+                            backgroundColor: '#374151',
+                          },
+                        },
                       }),
-                      singleValue: (provided) => ({
+                      placeholder: (provided) => ({
                         ...provided,
-                        color: '#374151',
+                        color: '#6b7280',
+                        '.dark &': {
+                          color: '#9ca3af',
+                        },
                       }),
                     }}
-                    theme={(theme) => ({
-                      ...theme,
-                      colors: {
-                        ...theme.colors,
-                        primary: '#6366f1',
-                        primary25: '#e0e7ff',
-                      },
-                    })}
-                    required
                   />
                 </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label
                     htmlFor="passout_year"
                     className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
                   >
                     <span className="flex items-center">
-                      <Calendar className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                      <Calendar className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" />
                       Passout Year
-                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
                   <input
                     type="number"
                     name="passout_year"
-                    id="passout_year"
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300"
-                    placeholder="2023"
                     value={formData.passout_year}
                     onChange={handleChange}
-                    min="1900"
-                    max={new Date().getFullYear() + 5}
-                    required
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-700 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-500"
+                    placeholder="e.g., 2023"
+                    disabled={
+                      isLoading || (enforceOtpVerification && !otpVerified)
+                    }
                   />
                 </div>
                 <div>
@@ -762,153 +1004,151 @@ const CompleteProfile = () => {
                     className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
                   >
                     <span className="flex items-center">
-                      <Briefcase className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
+                      <Briefcase className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" />
                       Years of Experience
-                      <span className="text-red-500 ml-1">*</span>
                     </span>
                   </label>
                   <input
                     type="number"
-                    step="0.1"
                     name="years_of_experience"
-                    id="years_of_experience"
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-800 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-300"
-                    placeholder="3.5"
                     value={formData.years_of_experience}
                     onChange={handleChange}
-                    min="0"
-                    required
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-700 dark:text-gray-200 text-base placeholder-gray-400 dark:placeholder-gray-500"
+                    placeholder="e.g., 3.5"
+                    step="0.1"
+                    disabled={
+                      isLoading || (enforceOtpVerification && !otpVerified)
+                    }
                   />
                 </div>
-                <div className="md:col-span-2">
-                  <label
-                    htmlFor="resume"
-                    className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
-                  >
-                    <span className="flex items-center">
-                      <FileText className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
-                      Resume (PDF)
-                      <span className="text-red-500 ml-1">*</span>
-                    </span>
-                  </label>
-                  <div className="w-full flex flex-col sm:flex-row gap-2 items-start sm:items-center">
-                    {formData.resume && (
-                      <LinkButton
-                        variant="link"
-                        to={`https://storage.googleapis.com/gen-ai-quiz/uploads/${formData.resume}`}
-                        className="text-base text-indigo-600 dark:text-indigo-300 hover:underline"
-                        target="_blank"
-                      >
-                        {formData.resume.split('/')[1]}
-                      </LinkButton>
-                    )}
-                    <input
-                      type="file"
-                      name="resume"
-                      id="resume"
-                      className="w-content text-base text-gray-700 dark:text-gray-200 file:mr-4 file:py-1 file:px-4 file:rounded-md file:border-0 file:text-base file:font-medium file:bg-indigo-50 dark:file:bg-indigo-900/30 file:text-indigo-700 dark:file:text-indigo-300 hover:file:bg-indigo-100 dark:hover:file:bg-indigo-800/30"
-                      accept=".pdf"
-                      onChange={handleFileChange}
-                      required={!formData.resume}
-                    />
-                  </div>
-                </div>
-                <div className="md:col-span-2">
-                  <label
-                    htmlFor="webcam_image"
-                    className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
-                  >
-                    <span className="flex items-center">
-                      <Camera className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-300" />
-                      Webcam Image
-                      <span className="text-red-500 ml-1">*</span>
-                    </span>
-                  </label>
-                  <div className="flex flex-col md:flex-row md:items-start gap-6">
-                    <div className="flex flex-col items-start min-w-[140px]">
-                      {!isWebcamActive ? (
-                        <button
-                          type="button"
-                          onClick={startWebcam}
-                          className="mt-0 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
-                        >
-                          <Camera className="w-4 h-4 mr-2" />
-                          Start Webcam
-                        </button>
-                      ) : (
-                        <div className="flex flex-col gap-2 mt-0">
-                          <button
-                            type="button"
-                            onClick={captureWebcamImage}
-                            className="bg-gradient-to-r from-emerald-600 to-green-600 text-white px-6 py-3 rounded-xl flex items-center hover:from-emerald-700 hover:to-green-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
-                          >
-                            <Camera className="w-4 h-4 mr-2" />
-                            Capture Image
-                          </button>
-                          <button
-                            type="button"
-                            onClick={stopWebcam}
-                            className="bg-gradient-to-r from-gray-500 to-gray-600 text-white px-6 py-3 rounded-xl flex items-center hover:from-gray-600 hover:to-gray-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
-                          >
-                            Stop Webcam
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 flex flex-row gap-4 justify-center">
-                      {isWebcamActive && (
-                        <div className="bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-md p-3 flex flex-col items-center w-[220px]">
-                          <video
-                            ref={videoRef}
-                            autoPlay
-                            className="rounded-lg shadow-md border border-indigo-200 dark:border-indigo-700 bg-black"
-                            style={{
-                              width: '200px',
-                              height: '150px',
-                              objectFit: 'cover',
-                              background: '#222',
-                            }}
-                          />
-                          <canvas ref={canvasRef} className="hidden" />
-                        </div>
-                      )}
-                      {webcamPreview && (
-                        <div className="bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-md p-3 flex flex-col items-center w-[220px]">
-                          <img
-                            src={webcamPreview}
-                            alt="Webcam preview"
-                            className="rounded-lg shadow-md border border-indigo-200 dark:border-indigo-700"
-                            style={{
-                              width: '200px',
-                              height: '150px',
-                              objectFit: 'cover',
-                              background: '#222',
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
               </div>
-              <div className="flex justify-end mt-10">
-                <button
+              <div>
+                <label
+                  htmlFor="resume"
+                  className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1"
+                >
+                  <span className="flex items-center">
+                    <FileText className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" />
+                    Resume (PDF)
+                  </span>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Upload your resume in PDF format and make sure it contains
+                    mobile number.
+                  </p>
+                </label>
+                <input
+                  type="file"
+                  name="resume"
+                  id="resume"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:ring-indigo-600 focus:border-indigo-600 dark:bg-gray-700 dark:text-gray-200 text-base file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100 dark:file:bg-indigo-900/30 dark:file:text-indigo-300 dark:hover:file:bg-indigo-900/50"
+                  accept="application/pdf"
+                  onChange={handleFileChange}
+                  disabled={
+                    isLoading || (enforceOtpVerification && !otpVerified)
+                  }
+                />
+                {formData.resume && (
+                  <a
+                    className="mt-1 text-sm text-gray-500 dark:text-gray-400 hover:cursor-pointer hover:underline"
+                    target="_blank"
+                    href={`https://storage.googleapis.com/gen-ai-quiz/uploads/${formData.resume}`}
+                  >
+                    Current: {formData.resume}
+                  </a>
+                )}
+              </div>
+              <div>
+                <label className="block text-base font-medium text-gray-700 dark:text-gray-200 mb-1">
+                  <span className="flex items-center">
+                    <Camera className="w-4 h-4 mr-2 text-indigo-600 dark:text-indigo-400" />
+                    Webcam Capture
+                  </span>
+                </label>
+                <div className="relative w-full max-w-md h-64 bg-gray-100 dark:bg-gray-800 rounded-md overflow-hidden">
+                  {isWebcamActive ? (
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      className="w-full h-full object-cover"
+                    />
+                  ) : webcamPreview ? (
+                    <img
+                      src={webcamPreview}
+                      alt="Webcam capture preview"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gray-200 dark:bg-gray-700">
+                      <Camera className="w-12 h-12 text-gray-400 dark:text-gray-500" />
+                    </div>
+                  )}
+                </div>
+                <div className="mt-2 flex gap-2">
+                  {!isWebcamActive ? (
+                    <button
+                      type="button"
+                      onClick={startWebcam}
+                      className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2 rounded-md flex items-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300"
+                      disabled={
+                        isLoading || (enforceOtpVerification && !otpVerified)
+                      }
+                    >
+                      <Camera className="w-4 h-4 mr-2" />
+                      Start Webcam
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={captureWebcamImage}
+                        className="bg-gradient-to-r from-green-600 to-emerald-600 text-white px-4 py-2 rounded-md flex items-center hover:from-green-700 hover:to-emerald-700 transition-all duration-300"
+                        disabled={isLoading}
+                      >
+                        <Camera className="w-4 h-4 mr-2" />
+                        Capture Image
+                      </button>
+                      <button
+                        type="button"
+                        onClick={stopWebcam}
+                        className="bg-gradient-to-r from-red-600 to-rose-600 text-white px-4 py-2 rounded-md flex items-center hover:from-red-700 hover:to-rose-700 transition-all duration-300"
+                        disabled={isLoading}
+                      >
+                        <X className="w-4 h-4 mr-2" />
+                        Stop Webcam
+                      </button>
+                    </>
+                  )}
+                </div>
+                <canvas ref={canvasRef} className="hidden" />
+              </div>
+              <div className="flex gap-4">
+                <Button
                   type="submit"
-                  disabled={isLoading}
-                  className="gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-8 py-3 rounded-xl flex items-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-60"
+                  className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-2 rounded-md flex items-center hover:from-indigo-700 hover:to-purple-700 transition-all duration-300"
+                  disabled={
+                    isLoading || (enforceOtpVerification && !otpVerified)
+                  }
                 >
                   {isLoading ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Processing...
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      Saving...
                     </>
                   ) : (
                     <>
                       Save Profile
-                      <ArrowRight className="w-4 h-4" />
+                      <ArrowRight className="w-4 h-4 ml-2" />
                     </>
                   )}
-                </button>
+                </Button>
+                {candidate.is_profile_complete && (
+                  <LinkButton
+                    to="/candidate/dashboard"
+                    className="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-6 py-2 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-300"
+                  >
+                    Back to Dashboard
+                  </LinkButton>
+                )}
               </div>
             </form>
           </div>

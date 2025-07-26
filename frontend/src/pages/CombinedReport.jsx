@@ -13,7 +13,7 @@ import {
 } from 'chart.js'
 import { Briefcase, X, ChevronRight, Download } from 'lucide-react'
 import Navbar from '../components/Navbar'
-import { baseUrl, downloadAsPDF } from '../utils/utils'
+import { baseUrl } from '../utils/utils'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
@@ -29,6 +29,7 @@ const CombinedReport = () => {
       })
       .then((response) => {
         setReport(response.data)
+        setError('')
       })
       .catch((error) => {
         console.error('Error fetching report:', error)
@@ -37,7 +38,28 @@ const CombinedReport = () => {
   }, [job_id])
 
   const handleDownloadReport = () => {
-    downloadAsPDF('report-section', `Combined_Report_${job_id}`)
+    fetch(`${baseUrl}/recruiter/download-report/${job_id}/pre-assessment`, {
+      method: 'GET',
+      credentials: 'include',
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('Failed to fetch PDF')
+        }
+        return response.blob()
+      })
+      .then((blob) => {
+        const url = window.URL.createObjectURL(new Blob([blob]))
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `report_${job_id}_combined-assessment.pdf`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+      })
+      .catch((error) => {
+        console.error('Error downloading report:', error)
+      })
   }
 
   if (error) {
@@ -63,7 +85,7 @@ const CombinedReport = () => {
     )
   }
 
-  if (!report)
+  if (!report) {
     return (
       <div className="min-h-screen bg-gray-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 flex flex-col">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center text-gray-700 dark:text-gray-200 text-sm">
@@ -71,27 +93,36 @@ const CombinedReport = () => {
         </div>
       </div>
     )
+  }
+
+  // Dynamic chart colors based on theme
+  const isDarkMode = document.documentElement.classList.contains('dark')
+  const textColor = isDarkMode ? '#D1D5DB' : '#374151'
+  const titleColor = isDarkMode ? '#F3F4F6' : '#111827'
+  const gridColor = isDarkMode ? '#4B5563' : '#E5E7EB'
 
   const chartData = {
     labels: report.candidates.map((candidate) => candidate.name),
     datasets: [
       {
         label: 'Pre-Assessment Score',
-        data: report.candidates.map((candidate) => candidate.pre_score),
+        data: report.candidates.map((candidate) => candidate.pre_score || 0),
         backgroundColor: 'rgba(79, 70, 229, 0.6)',
         borderColor: 'rgba(79, 70, 229, 1)',
         borderWidth: 1,
       },
       {
         label: 'Post-Assessment Score',
-        data: report.candidates.map((candidate) => candidate.post_score),
+        data: report.candidates.map((candidate) => candidate.post_score || 0),
         backgroundColor: 'rgba(16, 185, 129, 0.6)',
         borderColor: 'rgba(16, 185, 129, 1)',
         borderWidth: 1,
       },
       {
         label: 'Combined Score',
-        data: report.candidates.map((candidate) => candidate.combined_score),
+        data: report.candidates.map(
+          (candidate) => candidate.combined_score || 0
+        ),
         backgroundColor: 'rgba(139, 92, 246, 0.6)',
         borderColor: 'rgba(139, 92, 246, 1)',
         borderWidth: 1,
@@ -105,48 +136,28 @@ const CombinedReport = () => {
       legend: {
         position: 'top',
         labels: {
-          font: {
-            size: 12,
-          },
-          color: '#374151',
-          colorDark: '#D1D5DB', // gray-300 for dark mode
+          font: { size: 12 },
+          color: textColor,
         },
       },
       title: {
         display: true,
         text: `Combined Scores for ${report.job_title}`,
-        font: {
-          size: 18,
-          weight: '600',
-        },
-        color: '#111827',
-        colorDark: '#F3F4F6', // gray-100 for dark mode
-        padding: {
-          bottom: 20,
-        },
+        font: { size: 18, weight: '600' },
+        color: titleColor,
+        padding: { bottom: 20 },
       },
     },
     scales: {
       y: {
         beginAtZero: true,
         max: 1,
-        ticks: {
-          color: '#374151',
-          colorDark: '#D1D5DB',
-        },
-        grid: {
-          color: '#E5E7EB',
-          colorDark: '#4B5563', // gray-600 for dark mode
-        },
+        ticks: { color: textColor },
+        grid: { color: gridColor },
       },
       x: {
-        ticks: {
-          color: '#374151',
-          colorDark: '#D1D5DB',
-        },
-        grid: {
-          display: false,
-        },
+        ticks: { color: textColor },
+        grid: { display: false },
       },
     },
   }
@@ -215,6 +226,9 @@ const CombinedReport = () => {
                     <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
                       Final Bands
                     </th>
+                    <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
+                      AI Feedback
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -241,23 +255,28 @@ const CombinedReport = () => {
                       <td className="py-3 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
                         {candidate.post_score}
                       </td>
-                      <td className="py-3 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
+                      <td className="py-3 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-600">
                         {candidate.combined_score}
                       </td>
                       <td className="py-3 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
                         {candidate.total_questions}
                       </td>
                       <td className="py-3 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
-                        {candidate.avg_time_per_question}
+                        {candidate.avg_time_per_answer}
                       </td>
                       <td className="py-3 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
-                        {Object.entries(candidate.final_bands).map(
+                        {Object.entries(candidate.final_bands || {}).map(
                           ([skill, band]) => (
                             <span key={skill} className="mr-2">
                               {skill}: {band}
                             </span>
                           )
                         )}
+                      </td>
+                      <td className="py-3 px-6 text-sm text-gray-700 dark:text-gray-300 border-b border-gray-200 dark:border-gray-600">
+                        {report.ai_enabled && candidate.ai_feedback
+                          ? candidate.ai_feedback.summary
+                          : 'No AI feedback available'}
                       </td>
                     </tr>
                   ))}
@@ -290,10 +309,10 @@ const CombinedReport = () => {
                     <p>Post-Assessment Score: {candidate.post_score}</p>
                     <p>Combined Score: {candidate.combined_score}</p>
                     <p>Questions Attempted: {candidate.total_questions}</p>
-                    <p>Avg Time/Question: {candidate.avg_time_per_question}s</p>
+                    <p>Avg Time/Question: {candidate.avg_time_per_answer}s</p>
                     <p>
                       Final Bands:{' '}
-                      {Object.entries(candidate.final_bands).map(
+                      {Object.entries(candidate.final_bands || {}).map(
                         ([skill, band]) => (
                           <span key={skill} className="mr-2">
                             {skill}: {band}
@@ -301,7 +320,19 @@ const CombinedReport = () => {
                         )
                       )}
                     </p>
-                    {candidate.description && <p>{candidate.description}</p>}
+                    {candidate.description && (
+                      <p>Description: {candidate.description}</p>
+                    )}
+                    {report.ai_enabled && candidate.ai_feedback ? (
+                      <div className="mt-4 bg-gray-100 dark:bg-gray-700 p-4 rounded">
+                        <h4 className="text-sm font-medium text-gray-900 dark:text-white">
+                          AI Feedback
+                        </h4>
+                        <p>{candidate.ai_feedback.summary}</p>
+                      </div>
+                    ) : (
+                      <p className="mt-4 text-sm">No AI feedback available</p>
+                    )}
                   </div>
                 </div>
               ))}

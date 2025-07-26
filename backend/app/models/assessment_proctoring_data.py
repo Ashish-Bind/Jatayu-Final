@@ -11,7 +11,6 @@ class AssessmentProctoringData(db.Model):
     remarks = db.Column(JSONB, default=lambda: [])
     forced_termination = db.Column(db.Boolean, default=False)
     termination_reason = db.Column(db.String(255), default='')
-    attempt = db.relationship('AssessmentAttempt', back_populates='proctoring')
 
     def __repr__(self):
         return f'<AssessmentProctoringData for attempt_id={self.attempt_id}>'

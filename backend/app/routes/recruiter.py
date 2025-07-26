@@ -1,4 +1,7 @@
-from flask import Blueprint, jsonify, request, session
+from io import BytesIO
+from string import Template
+from flask import Blueprint, jsonify, request, send_file, session
+import requests
 from app import db, mail
 from app.models.user import User
 from app.models.job import JobDescription
@@ -10,18 +13,109 @@ from app.models.assessment_registration import AssessmentRegistration
 from app.models.candidate_skill import CandidateSkill
 from app.models.assessment_attempt import AssessmentAttempt
 from app.models.degree import Degree
+from app.models.assessment_proctoring_data import AssessmentProctoringData
+from app.models.subscription_plan import SubscriptionPlan
+from app.models.proctoring_violation import ProctoringViolation
 from app.models.degree_branch import DegreeBranch
 from app.services import question_batches
 from sqlalchemy import and_
 from sqlalchemy.orm import joinedload
 from datetime import datetime, timezone, timedelta
 import logging
+import os
+import google.generativeai as genai
+import importlib
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
 
 recruiter_api_bp = Blueprint('recruiter_api', __name__, url_prefix='/api/recruiter')
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Configure Gemini AI API
+api_key = os.getenv("GOOGLE_API_KEY")
+if not api_key:
+    raise ValueError("GOOGLE_API_KEY environment variable not set")
+genai.configure(api_key=api_key)
+generation_config = {
+    "temperature": 0.2,
+    "max_output_tokens": 2048
+}
+model_gemini = genai.GenerativeModel(
+    model_name="gemini-1.5-flash", generation_config=generation_config
+)
+
+
+def generate_ai_feedback(candidate_data, proctoring_data, violations):
+    """
+    Generate AI feedback using Gemini AI.
+    Args:
+        candidate_data: Dict with candidate performance (e.g., performance_log, skills).
+        proctoring_data: AssessmentProctoringData object.
+        violations: List of ProctoringViolation objects.
+    Returns:
+        Dict with AI-generated feedback or fallback message if error.
+    """
+    try:
+        print(candidate_data)
+        candidate_id = candidate_data.get('candidate_id')
+        job_id = candidate_data.get('job_id')
+        print("candiate and job id", candidate_id, job_id)  # Ensure job_id is passed in candidate_data
+        if not candidate_id or not job_id:
+            raise ValueError("Missing candidate_id or job_id")
+
+        # Fetch performance_log from AssessmentAttempt
+        attempt = AssessmentAttempt.query.filter_by(
+            candidate_id=candidate_id,
+            job_id=job_id,
+            status='completed'
+        ).first()
+        print(attempt)
+        performance_log = attempt.performance_log if attempt else {}
+        # Prepare prompt for Gemini AI
+        prompt = (
+            "Analyze the candidate's assessment performance and proctoring data. "
+            "Provide insights on strengths, weaknesses, and any concerns based on "
+            "tab switches, fullscreen warnings, and violations. Summarize in 2-3 sentences.\n\n"
+            f"Candidate ID: {candidate_data.get('candidate_id')}\n"
+            f"Name: {candidate_data.get('name')}\n"
+            f"Performance: {performance_log}\n"
+            f"Skills: {candidate_data.get('skills', [])}\n"
+            f"Experience: {candidate_data.get('experience', 0)} years\n"
+            f"Tab Switches: {proctoring_data.tab_switches if proctoring_data else 0}\n"
+            f"Fullscreen Warnings: {proctoring_data.fullscreen_warnings if proctoring_data else 0}\n"
+            f"Remarks: {proctoring_data.remarks if proctoring_data else []}\n"
+            f"Violations: {[{'type': v.violation_type, 'timestamp': v.timestamp.isoformat()} for v in violations]}"
+        )
+
+        # Call Gemini AI
+        response = model_gemini.generate_content(prompt)
+        feedback = response.text.strip() if response.text else "No feedback generated."
+
+        return {"summary": feedback}
+    except Exception as e:
+        print(f"Error generating AI feedback with Gemini: {str(e)}")
+        return {"summary": "AI feedback unavailable due to an error."}
+
+# Helper function to check if recruiter has AI reports enabled
+
+def has_ai_reports(recruiter_id):
+    user = User.query.get(recruiter_id)
+    if not user:
+        return False
+    recruiter = Recruiter.query.filter_by(user_id=user.id).first()
+    if not recruiter:
+        return False
+    subscription = SubscriptionPlan.query.get(recruiter.subscription_plan_id)
+    return subscription and subscription.ai_reports
+
 
 @recruiter_api_bp.route('/login', methods=['POST'])
 def recruiter_login():
@@ -238,11 +332,14 @@ def get_assessments_by_id(user_id):
 def get_ranked_candidates(job_id):
     if 'user_id' not in session or session['role'] != 'recruiter':
         return jsonify({'error': 'Unauthorized'}), 401
+
     job = JobDescription.query.get_or_404(job_id)
     registrations = AssessmentRegistration.query.filter_by(job_id=job_id).all()
     candidate_ids = [r.candidate_id for r in registrations]
+
     if not candidate_ids:
         return jsonify({'job_id': job_id, 'job_title': job.job_title, 'candidates': []}), 200
+
     candidates = Candidate.query.filter(Candidate.candidate_id.in_(candidate_ids)).all()
     required_skills = RequiredSkill.query.filter_by(job_id=job_id).all()
     required_skill_dict = {rs.skill_id: rs.priority for rs in required_skills}
@@ -252,14 +349,18 @@ def get_ranked_candidates(job_id):
             CandidateSkill.skill_id.in_(required_skill_dict.keys())
         )
     ).all()
+
     candidate_skill_map = {}
     for cs in candidate_skills:
         if cs.candidate_id not in candidate_skill_map:
             candidate_skill_map[cs.candidate_id] = {}
         candidate_skill_map[cs.candidate_id][cs.skill_id] = cs.proficiency
+
     max_proficiency = 8
     max_skill_score = sum(required_skill_dict.values()) * max_proficiency
     ranked_candidates = []
+    ai_enabled = has_ai_reports(session['user_id'])
+
     for candidate in candidates:
         skill_score = 0
         matched_skills = []
@@ -269,52 +370,84 @@ def get_ranked_candidates(job_id):
                 skill_name = Skill.query.get(skill_id).name
                 matched_skills.append(f"{skill_name} (Proficiency: {proficiency})")
                 skill_score += priority * proficiency
+
         skill_score_normalized = skill_score / max_skill_score if max_skill_score > 0 else 0
         exp_midpoint = (job.experience_min + job.experience_max) / 2
         exp_range = job.experience_max - job.experience_min
         exp_diff = abs(candidate.years_of_experience - exp_midpoint)
         exp_score = max(0, 1 - (exp_diff / (exp_range / 2))) if exp_range > 0 else 1
         total_score = (0.7 * skill_score_normalized) + (0.3 * exp_score)
+
         description = f"{candidate.name} is ranked based on "
         if matched_skills:
             description += f"strong skills in {', '.join(matched_skills)}"
         else:
             description += "limited skill matches"
         description += f" and {candidate.years_of_experience} years of experience, which "
-        if exp_diff < 0.5:
-            description += "closely matches"
-        elif exp_diff < 1.5:
-            description += "reasonably matches"
-        else:
-            description += "is outside"
+        description += (
+            "closely matches" if exp_diff < 0.5 else
+            "reasonably matches" if exp_diff < 1.5 else
+            "is outside"
+        )
         description += f" the job's {job.experience_min}-{job.experience_max} year requirement."
-        ranked_candidates.append({
+
+        candidate_data = {
             'candidate_id': candidate.candidate_id,
             'name': candidate.name,
             'email': candidate.email,
             'total_score': round(total_score, 2),
             'skill_score': round(skill_score_normalized, 2),
             'experience_score': round(exp_score, 2),
-            'description': description
-        })
+            'description': description,
+            'ai_feedback': None,
+            'job_id': JobDescription.query.get(job_id).job_id,
+        }
+
+        if ai_enabled:
+            # For pre-assessment, AI feedback might be limited to skill and experience analysis
+            ai_input = {
+                "candidate_id": candidate.candidate_id,
+                "name": candidate.name,
+                "skills": matched_skills,
+                "experience": candidate.years_of_experience,
+                "job_id": job.job_id,
+                "job_requirements": {
+                    "title": job.job_title,
+                    "experience_min": job.experience_min,
+                    "experience_max": job.experience_max
+                }
+            }
+            candidate_data['ai_feedback'] = generate_ai_feedback(ai_input, None, [])
+
+        ranked_candidates.append(candidate_data)
+
     ranked_candidates.sort(key=lambda x: x['total_score'], reverse=True)
     for i, candidate in enumerate(ranked_candidates, 1):
         candidate['rank'] = i
+
     return jsonify({
         'job_id': job_id,
         'job_title': job.job_title,
-        'candidates': ranked_candidates
+        'candidates': ranked_candidates,
+        'ai_enabled': ai_enabled
     }), 200
 
 @recruiter_api_bp.route('/report/<int:job_id>', methods=['GET'])
 def get_post_assessment_report(job_id):
     if 'user_id' not in session or session['role'] != 'recruiter':
         return jsonify({'error': 'Unauthorized'}), 401
-    current_time = datetime.now(timezone.utc)
+
+    current_time = datetime.now(timezone.utc)  # Offset-aware current time
     job = JobDescription.query.get_or_404(job_id)
     end_time = job.schedule_end if job.schedule_end else None
+
+    # Ensure end_time is offset-aware
+    if end_time and end_time.tzinfo is None:
+        end_time = end_time.replace(tzinfo=timezone.utc)
+
     if end_time and end_time > current_time:
         return jsonify({'error': 'Report not available until assessment ends'}), 403
+
     registrations = AssessmentRegistration.query.filter_by(job_id=job_id).all()
     candidate_ids = [r.candidate_id for r in registrations]
     if not candidate_ids:
@@ -322,78 +455,110 @@ def get_post_assessment_report(job_id):
             'job_id': job_id,
             'job_title': job.job_title,
             'job_description': job.job_description,
-            'candidates': []
+            'candidates': [],
+            'ai_enabled': False
         }), 200
+
     candidates = Candidate.query.filter(Candidate.candidate_id.in_(candidate_ids)).all()
     attempts = AssessmentAttempt.query.filter(
         and_(
             AssessmentAttempt.job_id == job_id,
             AssessmentAttempt.candidate_id.in_(candidate_ids),
-            AssessmentAttempt.status == 'completed'
+            AssessmentAttempt.status.in_(['completed', 'submitted', 'terminated'])
         )
     ).all()
-    attempt_map = {a.candidate_id: a.performance_log for a in attempts}
+
+    attempt_map = {a.candidate_id: a for a in attempts}
+    ai_enabled = has_ai_reports(session['user_id'])
     report = []
+
     for candidate in candidates:
-        performance = attempt_map.get(candidate.candidate_id)
+        attempt = attempt_map.get(candidate.candidate_id)
+        performance = attempt.performance_log if attempt else None
+        proctoring_data = AssessmentProctoringData.query.filter_by(attempt_id=attempt.attempt_id).first() if attempt else None
+        violations = ProctoringViolation.query.filter_by(attempt_id=attempt.attempt_id).all() if attempt else []
+
         if performance and isinstance(performance, dict):
             skill_data = {k: v for k, v in performance.items() if k != 'proctoring_data'}
-            total_accuracy = sum(skill_data['accuracy_percent'] for skill_data in skill_data.values()) / len(skill_data) if skill_data else 0
-            total_questions = sum(skill_data['questions_attempted'] for skill_data in skill_data.values()) if skill_data else 0
-            total_time = sum(skill_data['time_spent'] for skill_data in skill_data.values()) if skill_data else 0
+            total_accuracy = (
+                sum(skill_data.get('accuracy_percent', 0) for skill_data in skill_data.values()) /
+                len(skill_data) if skill_data else 0
+            )
+            total_questions = sum(skill_data.get('questions_attempted', 0) for skill_data in skill_data.values()) if skill_data else 0
+            total_time = sum(skill_data.get('time_spent', 0) for skill_data in skill_data.values()) if skill_data else 0
             avg_time_per_question = round(total_time / total_questions, 2) if total_questions > 0 else 0
-            final_bands = {skill: data['final_band'] for skill, data in skill_data.items()} if skill_data else {}
-            status = 'Completed'
+            final_bands = {skill: data.get('final_band', 'N/A') for skill, data in skill_data.items()} if skill_data else {}
+            status = 'Completed' if attempt.status in ['completed', 'submitted'] else 'Terminated'
         else:
             total_accuracy = 0
             total_questions = 0
             avg_time_per_question = 0
             final_bands = {}
             status = 'Did Not Attempt'
-        report.append({
+
+        candidate_data = {
             'candidate_id': candidate.candidate_id,
             'name': candidate.name,
             'email': candidate.email,
-            'accuracy': round(total_accuracy, 2),
+            'accuracy': round(total_accuracy, 1),
             'total_questions': total_questions,
-            'avg_time_per_question': avg_time_per_question,
+            'avg_time_per_answer': avg_time_per_question,
             'final_bands': final_bands,
-            'status': status
-        })
+            'status': status,
+            'ai_feedback': None
+        }
+
+        if ai_enabled and attempt:
+            ai_input = {
+                "candidate_id": candidate.candidate_id,
+                "name": candidate.name,
+                "performance": performance,
+                "skills": list(skill_data.keys()) if skill_data else [],
+                "job_id": job_id
+            }
+            candidate_data['ai_feedback'] = generate_ai_feedback(ai_input, proctoring_data, violations)
+
+        report.append(candidate_data)
+
+    # Sort by accuracy (descending) and assign ranks
+    report.sort(key=lambda x: x['accuracy'], reverse=True)
+    for i, candidate in enumerate(report, 1):
+        candidate['rank'] = i
+
     return jsonify({
         'job_id': job_id,
         'job_title': job.job_title,
-        'job_description': job.job_description,
-        'candidates': report
+        'candidates': report,
+        'ai_enabled': ai_enabled
     }), 200
 
 @recruiter_api_bp.route('/combined-report/<int:job_id>', methods=['GET'])
 def get_combined_report(job_id):
     if 'user_id' not in session or session['role'] != 'recruiter':
         return jsonify({'error': 'Unauthorized'}), 401
-    current_time = datetime.now(timezone.utc)
+
+    current_time = datetime.now(timezone.utc)  # Offset-aware current time
     job = JobDescription.query.get_or_404(job_id)
     end_time = job.schedule_end if job.schedule_end else None
+
+    # Ensure end_time is offset-aware
+    if end_time and end_time.tzinfo is None:
+        end_time = end_time.replace(tzinfo=timezone.utc)
+
     if end_time and end_time > current_time:
         return jsonify({'error': 'Report not available until assessment ends'}), 403
+
     registrations = AssessmentRegistration.query.filter_by(job_id=job_id).all()
     candidate_ids = [r.candidate_id for r in registrations]
     if not candidate_ids:
         return jsonify({
             'job_id': job_id,
             'job_title': job.job_title,
-            'job_description': job.job_description,
-            'candidates': []
+            'candidates': [],
+            'ai_enabled': False
         }), 200
+
     candidates = Candidate.query.filter(Candidate.candidate_id.in_(candidate_ids)).all()
-    attempts = AssessmentAttempt.query.filter(
-        and_(
-            AssessmentAttempt.job_id == job_id,
-            AssessmentAttempt.candidate_id.in_(candidate_ids),
-            AssessmentAttempt.status == 'completed'
-        )
-    ).all()
-    attempt_map = {a.candidate_id: a.performance_log for a in attempts}
     required_skills = RequiredSkill.query.filter_by(job_id=job_id).all()
     required_skill_dict = {rs.skill_id: rs.priority for rs in required_skills}
     candidate_skills = CandidateSkill.query.filter(
@@ -407,10 +572,23 @@ def get_combined_report(job_id):
         if cs.candidate_id not in candidate_skill_map:
             candidate_skill_map[cs.candidate_id] = {}
         candidate_skill_map[cs.candidate_id][cs.skill_id] = cs.proficiency
+
+    attempts = AssessmentAttempt.query.filter(
+        and_(
+            AssessmentAttempt.job_id == job_id,
+            AssessmentAttempt.candidate_id.in_(candidate_ids),
+            AssessmentAttempt.status.in_(['completed', 'submitted', 'terminated'])
+        )
+    ).all()
+    attempt_map = {a.candidate_id: a for a in attempts}
+
     max_proficiency = 8
     max_skill_score = sum(required_skill_dict.values()) * max_proficiency
+    ai_enabled = has_ai_reports(session['user_id'])
     ranked_candidates = []
+
     for candidate in candidates:
+        # Pre-assessment calculations
         skill_score = 0
         matched_skills = []
         for skill_id, priority in required_skill_dict.items():
@@ -419,30 +597,54 @@ def get_combined_report(job_id):
                 skill_name = Skill.query.get(skill_id).name
                 matched_skills.append(f"{skill_name} (Proficiency: {proficiency})")
                 skill_score += priority * proficiency
+
         skill_score_normalized = skill_score / max_skill_score if max_skill_score > 0 else 0
         exp_midpoint = (job.experience_min + job.experience_max) / 2
         exp_range = job.experience_max - job.experience_min
         exp_diff = abs(candidate.years_of_experience - exp_midpoint)
         exp_score = max(0, 1 - (exp_diff / (exp_range / 2))) if exp_range > 0 else 1
         pre_score = (0.7 * skill_score_normalized) + (0.3 * exp_score)
-        performance = attempt_map.get(candidate.candidate_id)
+
+        description = f"{candidate.name} is ranked based on "
+        description += (
+            f"strong skills in {', '.join(matched_skills)}" if matched_skills
+            else "limited skill matches"
+        )
+        description += f" and {candidate.years_of_experience} years of experience, which "
+        description += (
+            "closely matches" if exp_diff < 0.5 else
+            "reasonably matches" if exp_diff < 1.5 else
+            "is outside"
+        )
+        description += f" the job's {job.experience_min}-{job.experience_max} year requirement."
+
+        # Post-assessment calculations
+        attempt = attempt_map.get(candidate.candidate_id)
+        proctoring_data = AssessmentProctoringData.query.filter_by(attempt_id=attempt.attempt_id).first() if attempt else None
+        violations = ProctoringViolation.query.filter_by(attempt_id=attempt.attempt_id).all() if attempt else []
+        performance = attempt.performance_log if attempt else None
+
         if performance and isinstance(performance, dict):
             skill_data = {k: v for k, v in performance.items() if k != 'proctoring_data'}
-            total_accuracy = sum(skill_data['accuracy_percent'] for skill_data in skill_data.values()) / len(skill_data) if skill_data else 0
-            post_score = total_accuracy / 100
-            total_questions = sum(skill_data['questions_attempted'] for skill_data in skill_data.values()) if skill_data else 0
-            total_time = sum(skill_data['time_spent'] for skill_data in skill_data.values()) if skill_data else 0
+            total_accuracy = sum(skill_data.get('accuracy_percent', 0) for skill_data in skill_data.values()) / len(skill_data) if skill_data else 0
+            total_questions = sum(skill_data.get('questions_attempted', 0) for skill_data in skill_data.values()) if skill_data else 0
+            total_time = sum(skill_data.get('time_spent', 0) for skill_data in skill_data.values()) if skill_data else 0
             avg_time_per_question = round(total_time / total_questions, 2) if total_questions > 0 else 0
-            final_bands = {skill: data['final_band'] for skill, data in skill_data.items()} if skill_data else {}
-            status = 'Completed'
+            final_bands = {skill: data.get('final_band', 'N/A') for skill, data in skill_data.items()} if skill_data else {}
+            status = 'Completed' if attempt.status in ['completed', 'submitted'] else 'Terminated'
+            post_score = total_accuracy / 100  # Normalize to 0-1
         else:
-            post_score = 0
+            total_accuracy = 0
             total_questions = 0
             avg_time_per_question = 0
             final_bands = {}
             status = 'Did Not Attempt'
-        combined_score = 0.5 * pre_score + 0.5 * post_score
-        ranked_candidates.append({
+            post_score = 0
+
+        # Combined score
+        combined_score = (0.4 * pre_score) + (0.6 * post_score)
+
+        candidate_data = {
             'candidate_id': candidate.candidate_id,
             'name': candidate.name,
             'email': candidate.email,
@@ -450,17 +652,319 @@ def get_combined_report(job_id):
             'post_score': round(post_score, 2),
             'combined_score': round(combined_score, 2),
             'total_questions': total_questions,
-            'avg_time_per_question': avg_time_per_question,
+            'avg_time_per_answer': avg_time_per_question,
             'final_bands': final_bands,
             'status': status,
-            'description': f"{candidate.name} has {len(matched_skills)} matched skills and {candidate.years_of_experience} years experience."
-        })
-    ranked_candidates.sort(key=lambda x: (x['status'] == 'Completed', x['combined_score']), reverse=True)
+            'description': description,
+            'ai_feedback': None
+        }
+
+        if ai_enabled and attempt:
+            ai_input = {
+                "candidate_id": candidate.candidate_id,
+                "name": candidate.name,
+                "performance": performance or {},
+                "skills": matched_skills,
+                "experience": candidate.years_of_experience,
+                "job_id": job_id
+            }
+            candidate_data['ai_feedback'] = generate_ai_feedback(ai_input, proctoring_data, violations)
+
+        ranked_candidates.append(candidate_data)
+
+    ranked_candidates.sort(key=lambda x: x['combined_score'], reverse=True)
     for i, candidate in enumerate(ranked_candidates, 1):
         candidate['rank'] = i
+
     return jsonify({
         'job_id': job_id,
         'job_title': job.job_title,
-        'job_description': job.job_description,
-        'candidates': ranked_candidates
+        'candidates': ranked_candidates,
+        'ai_enabled': ai_enabled
     }), 200
+# HTML template for PDF rendering
+PDF_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{{ report_type }} Report for {{ job_title }}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { color: #1a202c; text-align: center; }
+        h2 { color: #2d3748; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { border: 1px solid #e2e8f0; padding: 8px; text-align: left; }
+        th { background-color: #edf2f7; }
+        .candidate-card { border: 1px solid #e2e8f0; padding: 10px; margin-bottom: 10px; }
+        .candidate-card h3 { margin: 0 0 5px; }
+        .page-break { page-break-before: always; }
+        .ai-feedback { margin-top: 10px; font-style: italic; }
+    </style>
+</head>
+<body>
+    <h1>{{ report_type }} Report for {{ job_title }}</h1>
+    <p>Job ID: {{ job_id }}</p>
+    {% if job_description %}
+    <p><strong>Job Description:</strong> {{ job_description }}</p>
+    {% endif %}
+    {% if candidates %}
+    <h2>Candidate Details</h2>
+    <table>
+        <thead>
+            <tr>
+                {% if report_type == 'Combined' %}
+                <th>Rank</th>
+                {% endif %}
+                <th>Name</th>
+                <th>Email</th>
+                {% if report_type != 'Pre-Assessment' %}
+                <th>Status</th>
+                {% endif %}
+                {% if report_type == 'Pre-Assessment' %}
+                <th>Total Score</th>
+                <th>Skill Score</th>
+                <th>Experience Score</th>
+                {% elif report_type == 'Post-Assessment' %}
+                <th>Accuracy (%)</th>
+                <th>Questions Attempted</th>
+                <th>Avg Time/Question (s)</th>
+                <th>Final Bands</th>
+                {% else %}
+                <th>Pre-Score</th>
+                <th>Post-Score</th>
+                <th>Combined Score</th>
+                <th>Questions Attempted</th>
+                <th>Avg Time/Question (s)</th>
+                <th>Final Bands</th>
+                {% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for candidate in candidates %}
+            <tr>
+                {% if report_type == 'Combined' %}
+                <td>{{ candidate.rank }}</td>
+                {% endif %}
+                <td>{{ candidate.name }}</td>
+                <td>{{ candidate.email }}</td>
+                {% if report_type != 'Pre-Assessment' %}
+                <td>{{ candidate.status }}</td>
+                {% endif %}
+                {% if report_type == 'Pre-Assessment' %}
+                <td>{{ candidate.total_score }}</td>
+                <td>{{ candidate.skill_score }}</td>
+                <td>{{ candidate.experience_score }}</td>
+                {% elif report_type == 'Post-Assessment' %}
+                <td>{{ candidate.accuracy }}</td>
+                <td>{{ candidate.total_questions }}</td>
+                <td>{{ candidate.avg_time_per_question }}</td>
+                <td>{{ candidate.final_bands | to_dict_string }}</td>
+                {% else %}
+                <td>{{ candidate.pre_score }}</td>
+                <td>{{ candidate.post_score }}</td>
+                <td>{{ candidate.combined_score }}</td>
+                <td>{{ candidate.total_questions }}</td>
+                <td>{{ candidate.avg_time_per_question }}</td>
+                <td>{{ candidate.final_bands | to_dict_string }}</td>
+                {% endif %}
+            </tr>
+        </tbody>
+    </table>
+    {% else %}
+    <p>No candidates found.</p>
+    {% endif %}
+    {% if candidates %}
+    <div class="page-break"></div>
+    <h2>Detailed Candidate Summaries</h2>
+    {% for candidate in candidates %}
+    <div class="candidate-card">
+        <h3>{{ candidate.name }} {% if report_type == 'Combined' %}(Rank {{ candidate.rank }}){% endif %}</h3>
+        <p><strong>Email:</strong> {{ candidate.email }}</p>
+        {% if report_type != 'Pre-Assessment' %}
+        <p><strong>Status:</strong> {{ candidate.status }}</p>
+        {% endif %}
+        {% if report_type == 'Pre-Assessment' %}
+        <p><strong>Total Score:</strong> {{ candidate.total_score }}</p>
+        <p><strong>Skill Score:</strong> {{ candidate.skill_score }}</p>
+        <p><strong>Experience Score:</strong> {{ candidate.experience_score }}</p>
+        {% if candidate.description %}
+        <p><strong>Description:</strong> {{ candidate.description }}</p>
+        {% endif %}
+        {% elif report_type == 'Post-Assessment' %}
+        <p><strong>Accuracy:</strong> {{ candidate.accuracy }}%</p>
+        <p><strong>Questions Attempted:</strong> {{ candidate.total_questions }}</p>
+        <p><strong>Avg Time/Question:</strong> {{ candidate.avg_time_per_question }}s</p>
+        <p><strong>Final Bands:</strong> {{ candidate.final_bands | to_dict_string }}</p>
+        {% else %}
+        <p><strong>Pre-Assessment Score:</strong> {{ candidate.pre_score }}</p>
+        <p><strong>Post-Assessment Score:</strong> {{ candidate.post_score }}</p>
+        <p><strong>Combined Score:</strong> {{ candidate.combined_score }}</p>
+        <p><strong>Questions Attempted:</strong> {{ candidate.total_questions }}</p>
+        <p><strong>Avg Time/Question:</strong> {{ candidate.avg_time_per_question }}s</p>
+        <p><strong>Final Bands:</strong> {{ candidate.final_bands | to_dict_string }}</p>
+        {% if candidate.description %}
+        <p><strong>Description:</strong> {{ candidate.description }}</p>
+        {% endif %}
+        {% endif %}
+        {% if ai_enabled and candidate.ai_feedback %}
+        <div className="ai-feedback">
+            <p><strong>AI Feedback:</strong> {{ candidate.ai_feedback.summary }}</p>
+        </div>
+        {% endif %}
+    </div>
+    </div>
+    {% endfor %}
+</body>
+</html>
+"""
+
+# Jinja2 filter to convert dict to string
+def to_dict_string(d):
+    return ", ".join(f"{k}: {v}" for k, v in d.items())
+
+@recruiter_api_bp.route('/download-report/<int:job_id>/<string:report_type>', methods=['GET'])
+def download_report(job_id, report_type):
+    if 'user_id' not in session or session['role'] != 'recruiter':
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    job = JobDescription.query.get_or_404(job_id)
+    recruiter = Recruiter.query.filter_by(user_id=session['user_id']).first()
+    if not recruiter or job.recruiter_id != recruiter.recruiter_id:
+        return jsonify({'error': 'Unauthorized access to job'}), 403
+
+    # Fetch report data
+    if report_type == 'pre-assessment':
+        report_response = get_ranked_candidates(job_id)
+    elif report_type == 'post-assessment':
+        report_response = get_post_assessment_report(job_id)
+    elif report_type == 'combined':
+        report_response = get_combined_report(job_id)
+    else:
+        return jsonify({'error': 'Invalid report type'}), 400
+
+    # Extract JSON data from response
+    if isinstance(report_response, tuple):
+        report_data = report_response[0].get_json()
+    else:
+        report_data = report_response.get_json()
+
+    # Generate PDF
+    try:
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(
+            buffer,
+            pagesize=letter,
+            leftMargin=0.75 * inch,
+            rightMargin=0.75 * inch,
+            topMargin=0.75 * inch,
+            bottomMargin=0.75 * inch
+        )
+        elements = []
+
+        # Define styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            name='Title',
+            parent=styles['Heading1'],
+            fontSize=16,
+            leading=20,
+            spaceAfter=12,
+            textColor=colors.black,
+            fontName='Helvetica-Bold'
+        )
+        heading_style = ParagraphStyle(
+            name='Heading',
+            parent=styles['Heading2'],
+            fontSize=12,
+            leading=14,
+            spaceAfter=8,
+            fontName='Helvetica-Bold'
+        )
+        body_style = ParagraphStyle(
+            name='Body',
+            parent=styles['Normal'],
+            fontSize=10,
+            leading=12,
+            spaceAfter=6,
+            fontName='Helvetica'
+        )
+        indent_style = ParagraphStyle(
+            name='Indent',
+            parent=body_style,
+            leftIndent=20
+        )
+
+        # Header
+        elements.append(Paragraph(
+            f"Recruitment Report: {report_data.get('job_title', 'Unknown Job')}",
+            title_style
+        ))
+        elements.append(Paragraph(
+            f"Type: {report_type.replace('-', ' ').title()}",
+            body_style
+        ))
+        elements.append(Spacer(1, 0.2 * inch))
+
+        # Candidate details
+        for candidate in report_data.get('candidates', []):
+            # Candidate name and rank
+            elements.append(Paragraph(
+                f"{candidate.get('name', 'Unknown')} (Rank: {candidate.get('rank', 'N/A')})",
+                heading_style
+            ))
+            # Details
+            elements.append(Paragraph(
+                f"Total Score: {candidate.get('total_score', 0):.2f}",
+                indent_style
+            ))
+            elements.append(Paragraph(
+                f"Skill Score: {candidate.get('skill_score', 0):.2f}",
+                indent_style
+            ))
+            elements.append(Paragraph(
+                f"Experience Score: {candidate.get('experience_score', 0):.2f}",
+                indent_style
+            ))
+            # Description (wrapped)
+            description = candidate.get('description', '')
+            elements.append(Paragraph(
+                f"Description: {description}",
+                indent_style
+            ))
+            # AI Feedback (if available)
+            if candidate.get('ai_feedback'):
+                feedback = candidate['ai_feedback'].get('summary', '')
+                elements.append(Paragraph(
+                    f"AI Feedback: {feedback}",
+                    indent_style
+                ))
+            elements.append(Spacer(1, 0.3 * inch))
+
+        # Build PDF with footer
+        def add_header_footer(canvas, doc):
+            canvas.saveState()
+            # Header
+            canvas.setFont('Helvetica-Bold', 10)
+            canvas.drawString(0.75 * inch, doc.pagesize[1] - 0.5 * inch, "Jatayu Recruitment Platform")
+            # Footer
+            canvas.setFont('Helvetica', 8)
+            canvas.drawString(0.75 * inch, 0.5 * inch, f"Page {canvas.getPageNumber()}")
+            canvas.drawRightString(
+                doc.pagesize[0] - 0.75 * inch, 0.5 * inch,
+                f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            canvas.restoreState()
+
+        doc.build(elements, onFirstPage=add_header_footer, onLaterPages=add_header_footer)
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f'report_{job_id}_{report_type}.pdf',
+            mimetype='application/pdf'
+        )
+    except Exception as e:
+        logger.error(f"Error generating PDF: {str(e)}")
+        return jsonify({'error': f'Failed to generate PDF: {str(e)}'}), 500
+    
