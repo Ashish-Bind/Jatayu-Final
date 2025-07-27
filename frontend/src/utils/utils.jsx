@@ -543,13 +543,5 @@ export const endAssessment = (
     })
     .finally(() => {
       setIsLoading(false)
-      const isFullscreen =
-        document.fullscreenElement ||
-        document.webkitFullscreenElement ||
-        document.mozFullScreenElement ||
-        document.msFullscreenElement
-      if (isFullscreen) {
-        exitFullscreen()
-      }
     })
 }

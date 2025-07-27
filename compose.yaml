@@ -17,3 +17,28 @@ services:
         - path: ./frontend
           target: /app
           action: sync
+
+  flask-app:
+    image: quizzer-backend
+    env_file:
+      - ./backend/.env
+    container_name: quizzer-backend
+    ports:
+      - '5000:5000'
+    volumes:
+      - ./backend/keys/gcp-key.json:/app/keys/gcs_key.json
+
+  postgres:
+    image: postgres:17
+    container_name: quizzer-postgres
+    environment:
+      POSTGRES_DB: KnowledgeBase
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 1234!@#$
+    ports:
+      - '5431:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

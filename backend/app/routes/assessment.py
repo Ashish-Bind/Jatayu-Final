@@ -627,9 +627,9 @@ def end_assessment(attempt_id):
 
         candidate = Candidate.query.get(attempt.candidate_id)
         if candidate.profile_picture:
-            profile_image_path = os.path.normpath(os.path.join(PROJECT_ROOT, candidate.profile_picture))
+            profile_image_path =f'https://storage.googleapis.com/gen-ai-quiz/uploads/{candidate.profile_picture}'
             for snapshot in proctoring_data["snapshots"]:
-                snapshot_path = os.path.normpath(os.path.join(PROJECT_ROOT, snapshot["path"]))
+                snapshot_path = f'https://storage.googleapis.com/gen-ai-quiz/uploads/{snapshot["path"]}'
                 is_match, remark = compare_images(snapshot_path, profile_image_path)
                 proctoring_data["remarks"].append(f"Snapshot at {snapshot['timestamp']}: {remark}")
                 snapshot["is_valid"] = is_match

@@ -639,7 +639,7 @@ const AssessmentChatbot = () => {
       <div className="flex-grow py-12 px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col md:flex-row gap-8">
           {/* Left Sidebar */}
-          <div className="w-full md:w-[40%] bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 flex flex-col">
+          <div className="w-full md:w-[25%] bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 flex flex-col">
             <div className="flex items-center gap-3 mb-8">
               <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl">
                 <BookOpen className="w-6 h-6 text-white" />
@@ -747,7 +747,7 @@ const AssessmentChatbot = () => {
           </div>
 
           {/* Chat Area */}
-          <div className="w-full md:w-[60%] bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8">
+          <div className="w-full md:w-[75%] bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-8 flex items-center gap-3">
               <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl">
                 <BookOpen className="w-6 h-6 text-white" />
