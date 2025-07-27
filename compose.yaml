@@ -4,7 +4,7 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     container_name: quizzer-frontend
     ports:
       - '5173:5173'
@@ -17,9 +17,13 @@ services:
         - path: ./frontend
           target: /app
           action: sync
+    depends_on:
+      - backend
 
   flask-app:
-    image: quizzer-backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
     env_file:
       - ./backend/.env
     container_name: quizzer-backend
@@ -27,6 +31,8 @@ services:
       - '5000:5000'
     volumes:
       - ./backend/keys/gcp-key.json:/app/keys/gcs_key.json
+    depends_on:
+      - postgres
 
   postgres:
     image: postgres:17
