@@ -915,15 +915,15 @@ def download_report(job_id, report_type):
             ))
             # Details
             elements.append(Paragraph(
-                f"Total Score: {candidate.get('total_score', 0):.2f}",
+                f"Total Score: {candidate.get('combined_score', 0):.2f}",
                 indent_style
             ))
             elements.append(Paragraph(
-                f"Skill Score: {candidate.get('skill_score', 0):.2f}",
+                f"Skill Score: {candidate.get('post_score', 0):.2f}",
                 indent_style
             ))
             elements.append(Paragraph(
-                f"Experience Score: {candidate.get('experience_score', 0):.2f}",
+                f"Experience Score: {candidate.get('pre_score', 0):.2f}",
                 indent_style
             ))
             # Description (wrapped)

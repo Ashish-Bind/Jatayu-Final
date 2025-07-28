@@ -30,7 +30,7 @@ services:
     ports:
       - '5000:5000'
     volumes:
-      - ./backend/keys/gcp-key.json:/app/keys/gcs_key.json
+      - ./backend/keys/gcp-key.json:/app/keys/gcp-key.json
     depends_on:
       - postgres
 

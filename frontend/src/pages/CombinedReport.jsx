@@ -38,7 +38,7 @@ const CombinedReport = () => {
   }, [job_id])
 
   const handleDownloadReport = () => {
-    fetch(`${baseUrl}/recruiter/download-report/${job_id}/pre-assessment`, {
+    fetch(`${baseUrl}/recruiter/download-report/${job_id}/combined`, {
       method: 'GET',
       credentials: 'include',
     })
