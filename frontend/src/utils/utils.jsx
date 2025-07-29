@@ -4,8 +4,10 @@ import html2canvas from 'html2canvas'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
+// export const baseUrl =
+//   'https://quizzer-backend-flask-72964026119.asia-southeast1.run.app/api'
 export const baseUrl =
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'
+  'https://quizzer-backend-flask-72964026119.asia-southeast1.run.app/api'
 
 export function capitalizeFirstLetter(str) {
   if (typeof str !== 'string' || str.length === 0) {

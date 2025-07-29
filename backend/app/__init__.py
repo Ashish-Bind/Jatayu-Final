@@ -9,6 +9,7 @@ from flask_limiter.util import get_remote_address
 import logging
 from functools import wraps
 import razorpay
+import time
 
 # from flask_migrate import Migrate
 
@@ -18,7 +19,7 @@ limiter = Limiter(key_func=get_remote_address)
 razorpay_client = razorpay.Client(auth=(os.getenv('RAZORPAY_KEY_ID'), os.getenv('RAZORPAY_KEY_SECRET')))
 
 # Configure logging
-logging.basicConfig(level=logging.ERROR)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 logger = logging.getLogger(__name__)
 
 class ErrorHandler:
@@ -82,11 +83,26 @@ def handle_validation_error(e):
 def create_app():
     load_dotenv()
     app = Flask(__name__)
+
+    @app.before_request
+    def log_request():
+        request.start_time = time.time()
+        app.logger.info(f"[{request.method}] {request.path} from {request.remote_addr}")
+
+    @app.after_request
+    def log_response(response):
+        duration = round(time.time() - request.start_time, 4)
+        app.logger.info(
+        f"[{response.status_code}] {request.method} {request.path} "
+        f"completed in {duration}s"
+    )
+        return response
+    
     app.config.from_object('app.config.Config')
     app.secret_key = os.getenv("SECRET_KEY", "dev-secret-key")
 
     # Enable CORS
-    CORS(app, supports_credentials=True)
+    CORS(app, supports_credentials=True, origins=["http://localhost:5173","https://frontend-72964026119.asia-southeast1.run.app"])
 
     db.init_app(app)
     mail.init_app(app)
@@ -109,6 +125,7 @@ def create_app():
     from app.models.assessment_registration import AssessmentRegistration
     from app.models.subscription_plan import SubscriptionPlan
     from app.models.superadmin import Superadmin
+    from app.models.degree import Degree
     
     # Import and register blueprints
     from app.routes.candidate import candidate_api_bp
@@ -126,9 +143,19 @@ def create_app():
     app.register_blueprint(subscriptions_bp)
     app.register_blueprint(admin_api_bp)
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
+
+    @app.route('/', methods=['GET'])
+    def test_api():
+        return jsonify({"message": "Server is Working!", "status": "ok"}), 200
+    
+    @app.route('/degrees', methods=['GET'])
+    def get_all_degrees():
+        degrees = Degree.query.all()
+        return jsonify({"message": "Server is Working!",
+        "degrees": [{'degree_id': degree.degree_id, 'degree_name': degree.degree_name} for degree in degrees], "status": "ok"}), 200
     
     return app
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=8080)

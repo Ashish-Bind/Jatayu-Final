@@ -10,11 +10,9 @@ COPY requirements.txt .
 RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
-RUN python -m nltk.downloader punkt stopwords
-
 COPY . .
 
-EXPOSE 5000
+EXPOSE 8080
 
 # Run with Gunicorn
-CMD ["gunicorn", "run:app", "--bind", "0.0.0.0:5000", "--workers", "4"]
+CMD ["gunicorn", "run:app", "--bind", "0.0.0.0:8080", "--workers", "4"]
