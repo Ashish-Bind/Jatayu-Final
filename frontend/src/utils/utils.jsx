@@ -4,7 +4,8 @@ import html2canvas from 'html2canvas'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
-export const baseUrl = import.meta.env.VITE_API_BASE_URL
+export const baseUrl =
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'
 
 export function capitalizeFirstLetter(str) {
   if (typeof str !== 'string' || str.length === 0) {
@@ -352,7 +353,7 @@ export const fetchNextQuestion = (
           {
             type: 'bot',
             content: (
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-2 text-lg">
                 <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-300" />
                 Assessment completed! Redirecting to results...
               </div>
@@ -370,7 +371,7 @@ export const fetchNextQuestion = (
           newMessages.push({
             type: 'bot',
             content: (
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-2 text-lg">
                 <Star className="w-4 h-4 text-indigo-600 dark:text-indigo-300" />
                 {data.greeting}
               </div>
@@ -380,7 +381,7 @@ export const fetchNextQuestion = (
         newMessages.push({
           type: 'bot',
           content: (
-            <div className="text-sm">
+            <div className="text-lg">
               Q{data.question_number}: {renderContent(data.question.question)}
             </div>
           ),
@@ -388,7 +389,7 @@ export const fetchNextQuestion = (
         newMessages.push({
           type: 'bot',
           content: (
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex items-center gap-2 text-lg">
               <BookOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-300" />
               Skill: {data.skill.replace('_', ' ')}
             </div>
@@ -445,7 +446,7 @@ export const handleAnswerSubmit = (
     {
       type: 'user',
       content: (
-        <div className="flex items-center justify-end gap-2 text-sm">
+        <div className="flex items-center justify-end gap-2 text-lg">
           Selected option {userAnswer}
           <Send className="w-4 h-4 text-indigo-600 dark:text-indigo-300" />
         </div>
@@ -479,7 +480,7 @@ export const handleAnswerSubmit = (
         {
           type: 'bot',
           content: (
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex items-center gap-2 text-lg">
               {data.feedback.includes('✅') ? (
                 <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-300" />
               ) : (

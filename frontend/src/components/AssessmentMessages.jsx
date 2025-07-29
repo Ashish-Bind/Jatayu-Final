@@ -30,7 +30,7 @@ const AssessmentMessages = ({
             }`}
           >
             <div
-              className={`max-w-[85%] p-4 rounded-lg text-base ${
+              className={`max-w-[85%] p-4 rounded-lg text-lg ${
                 msg.type === 'bot'
                   ? 'bg-indigo-100 dark:bg-indigo-900/50 text-gray-800 dark:text-gray-100 shadow-md'
                   : 'bg-indigo-200 dark:bg-indigo-800/50 text-gray-900 dark:text-gray-100 shadow-md'
@@ -57,10 +57,10 @@ const AssessmentMessages = ({
                             option.value || (optIndex + 1).toString()
                           )
                         }
-                        className="w-5 h-5 text-indigo-600 dark:text-indigo-300 focus:ring-indigo-600 border-gray-300 dark:border-gray-600"
+                        className="w-5 h-5 text-indigo-600 dark:text-indigo-300 focus:ring-indigo-600 border-gray-300 dark:border-gray-600 hidden peer"
                         disabled={isLoading}
                       />
-                      <span className="ml-3 text-base text-gray-800 dark:text-gray-100">
+                      <span className="ml-3 text-lg text-gray-800 dark:text-gray-100 peer-checked:border-indigo-600">
                         {option.label || `${optIndex + 1}. ${option}`}
                       </span>
                     </label>
@@ -71,7 +71,7 @@ const AssessmentMessages = ({
           </div>
         ))}
         {!messages.length && !isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center text-base text-gray-600 dark:text-gray-300">
+          <div className="absolute inset-0 flex items-center justify-center text-lg text-gray-600 dark:text-gray-300">
             <BookOpen className="w-6 h-6 mr-3 text-indigo-600 dark:text-indigo-300" />
             Waiting for the first question...
           </div>

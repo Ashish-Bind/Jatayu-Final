@@ -123,7 +123,7 @@ def recruiter_login():
     email = data.get('email')
     password = data.get('password')
     recruiter = User.query.filter_by(email=email).first()
-    if recruiter and recruiter.check_password(password):
+    if recruiter and recruiter.check_password(password) and recruiter.role == 'recruiter':
         session['user_id'] = recruiter.id
         session['role'] = 'recruiter'
         return jsonify({'message': 'Login successful'}), 200

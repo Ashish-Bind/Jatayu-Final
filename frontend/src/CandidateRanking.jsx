@@ -12,7 +12,8 @@ import {
 } from 'chart.js'
 import { Briefcase, X, ChevronRight, Download } from 'lucide-react'
 import Navbar from './components/Navbar'
-import { baseUrl } from './utils/utils' // Remove downloadAsPDF import
+import { baseUrl } from './utils/utils'
+import ClockLoader from './components/ClockLoader'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
@@ -73,40 +74,27 @@ const CandidateRankings = () => {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 flex flex-col">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div
-            className="bg-red-50 dark:bg-red-900/30 border-l-4 border-red-500 text-red-700 dark:text-red-300 p-3 mb-6 rounded-md text-sm flex items-center gap-2"
-            role="alert"
-          >
-            <X className="w-4 h-4" />
-            {error}
-          </div>
+      <div className="min-h-screen bg-gradient-to-br from-red-50 to-pink-50 dark:from-gray-900 dark:to-red-900 flex items-center justify-center">
+        <div className="text-center p-8 bg-white/70 dark:bg-gray-800/70 rounded-2xl shadow-xl border border-red-200 dark:border-red-700 backdrop-blur-lg">
+          <div className="text-red-500 dark:text-red-400 text-6xl mb-4">⚠️</div>
+          <p className="text-red-600 dark:text-red-400 text-xl font-medium">
+            Error: {error}
+          </p>
           <Link
             to="/recruiter/dashboard"
-            className="inline-flex items-center text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200 font-medium text-sm"
+            className="mt-4 inline-flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 font-medium text-base transition-all duration-200"
           >
             Back to Dashboard
-            <ChevronRight className="w-4 h-4 ml-1" />
+            <ChevronRight className="w-5 h-5 ml-1" />
           </Link>
         </div>
       </div>
     )
   }
 
-  if (!data)
-    return (
-      <div className="min-h-screen bg-gray-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 flex flex-col">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 text-center">
-          <p className="text-sm text-gray-700 dark:text-gray-200">Loading...</p>
-        </div>
-      </div>
-    )
-
-  const isDarkMode = document.documentElement.classList.contains('dark')
-  const textColor = isDarkMode ? '#D1D5DB' : '#374151'
-  const titleColor = isDarkMode ? '#F3F4F6' : '#111827'
-  const gridColor = isDarkMode ? '#4B5563' : '#E5E7EB'
+  if (!data) {
+    return <ClockLoader />
+  }
 
   const chartData = {
     labels: data.candidates.map((candidate) => candidate.name),
@@ -114,199 +102,306 @@ const CandidateRankings = () => {
       {
         label: 'Total Score',
         data: data.candidates.map((candidate) => candidate.total_score || 0),
-        backgroundColor: 'rgba(79, 70, 229, 0.6)',
-        borderColor: 'rgba(79, 70, 229, 1)',
-        borderWidth: 1,
+        backgroundColor: 'rgba(99, 102, 241, 0.2)', // Indigo with transparency
+        borderColor: '#6366f1', // Solid indigo
+        borderWidth: 2,
       },
       {
         label: 'Skill Score',
         data: data.candidates.map((candidate) => candidate.skill_score || 0),
-        backgroundColor: 'rgba(16, 185, 129, 0.6)',
-        borderColor: 'rgba(16, 185, 129, 1)',
-        borderWidth: 1,
+        backgroundColor: 'rgba(16, 185, 129, 0.2)', // Green with transparency
+        borderColor: '#10b981', // Solid green
+        borderWidth: 2,
       },
       {
         label: 'Experience Score',
         data: data.candidates.map(
           (candidate) => candidate.experience_score || 0
         ),
-        backgroundColor: 'rgba(139, 92, 246, 0.6)',
-        borderColor: 'rgba(139, 92, 246, 1)',
-        borderWidth: 1,
+        backgroundColor: 'rgba(139, 92, 246, 0.2)', // Purple with transparency
+        borderColor: '#8b5cf6', // Solid purple
+        borderWidth: 2,
       },
     ],
   }
 
   const chartOptions = {
     responsive: true,
+    maintainAspectRatio: true,
     plugins: {
       legend: {
         position: 'top',
         labels: {
-          font: { size: 12 },
-          color: textColor,
+          font: { size: 14 },
+          color: document.documentElement.classList.contains('dark')
+            ? '#FFFFFF'
+            : '#374151',
         },
       },
       title: {
         display: true,
         text: `Candidate Scores for ${data.job_title}`,
-        font: { size: 18, weight: '600' },
-        color: titleColor,
+        font: { size: 18, weight: 'bold' },
+        color: document.documentElement.classList.contains('dark')
+          ? '#FFFFFF'
+          : '#111827',
         padding: { bottom: 20 },
+      },
+      tooltip: {
+        backgroundColor: document.documentElement.classList.contains('dark')
+          ? '#374151'
+          : '#FFFFFF',
+        titleFont: { size: 14 },
+        bodyFont: { size: 12 },
+        padding: 10,
+        titleColor: document.documentElement.classList.contains('dark')
+          ? '#FFFFFF'
+          : '#111827',
+        bodyColor: document.documentElement.classList.contains('dark')
+          ? '#E5E7EB'
+          : '#374151',
       },
     },
     scales: {
       y: {
         beginAtZero: true,
         max: 1,
-        ticks: { color: textColor },
-        grid: { color: gridColor },
+        title: {
+          display: true,
+          text: 'Score',
+          font: { size: 14 },
+          color: document.documentElement.classList.contains('dark')
+            ? '#FFFFFF'
+            : '#374151',
+        },
+        ticks: {
+          color: document.documentElement.classList.contains('dark')
+            ? '#FFFFFF'
+            : '#374151',
+          stepSize: 0.2,
+        },
+        grid: {
+          color: document.documentElement.classList.contains('dark')
+            ? '#9CA3AF'
+            : '#E5E7EB',
+        },
       },
       x: {
-        ticks: { color: textColor },
+        ticks: {
+          color: document.documentElement.classList.contains('dark')
+            ? '#FFFFFF'
+            : '#374151',
+        },
         grid: { display: false },
       },
     },
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gradient-to-br dark:from-gray-900 dark:to-gray-800 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-gray-900 dark:via-slate-900 dark:to-indigo-950 flex flex-col font-sans">
       <Navbar />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-          Candidate Rankings for {data.job_title}
-        </h1>
-        <div className="flex justify-between items-center mb-6">
-          <Link
-            to="/recruiter/dashboard"
-            className="inline-flex items-center text-indigo-600 dark:text-indigo-300 hover:text-indigo-800 dark:hover:text-indigo-200 font-medium text-sm"
-          >
-            Back to Dashboard
-            <ChevronRight className="w-4 h-4 ml-1" />
-          </Link>
-          <button
-            onClick={handleDownloadReport}
-            className="flex items-center px-4 py-2 bg-green-600 dark:bg-green-500 text-white rounded-md text-sm font-medium hover:bg-green-700 dark:hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-600 dark:focus:ring-offset-gray-800 gap-2"
-          >
-            <Download className="w-4 h-4" />
-            <span>Download Report</span>
-          </button>
-        </div>
-
-        {data.candidates.length > 0 ? (
-          <div id="report-section">
-            <div className="bg-white dark:bg-gray-800 p-6 sm:p-8 rounded-lg shadow-sm border border-gray-200 dark:border-gray-600 mb-8">
-              <h2 className="text-lg font-semibold mb-4">Score Distribution</h2>
-              <Bar data={chartData} options={chartOptions} />
+      <div className="flex-1 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-12">
+            <div className="flex items-center justify-center mb-6">
+              <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-2xl shadow-lg">
+                <Briefcase className="w-12 h-12 text-white" />
+              </div>
             </div>
-
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-600 mb-8 overflow-x-auto">
-              <table className="min-w-full">
-                <thead>
-                  <tr class="bg-gray-50 dark:bg-gray-700">
-                    <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
-                      Rank
-                    </th>
-                    <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
-                      Name
-                    </th>
-                    <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
-                      Email
-                    </th>
-                    <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
-                      Total Score
-                    </th>
-                    <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
-                      Skill Score
-                    </th>
-                    <th className="py-3 px-6 text-left text-sm font-medium text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
-                      Experience Score
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.candidates.map((candidate) => (
-                    <tr
-                      key={candidate.candidate_id}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-700"
-                    >
-                      <td className="py-3 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
-                        {candidate.rank}
-                      </td>
-                      <td className="py-3 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
-                        {candidate.name}
-                      </td>
-                      <td className="py-3 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
-                        {candidate.email}
-                      </td>
-                      <td className="py-3 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
-                        {(candidate.total_score || 0).toFixed(2)}
-                      </td>
-                      <td className="py-3 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
-                        {(candidate.skill_score || 0).toFixed(2)}
-                      </td>
-                      <td className="py-3 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200 dark:border-gray-600">
-                        {(candidate.experience_score || 0).toFixed(2)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {data.candidates.map((candidate) => (
-                <div
-                  key={candidate.candidate_id}
-                  className="bg-white dark:bg-gray-800 p-5 rounded-lg shadow-sm hover:shadow-md transition-shadow border border-gray-200 dark:border-gray-600"
-                >
-                  <div className="flex items-start gap-3 mb-3">
-                    <div className="bg-indigo-50 dark:bg-indigo-900/30 p-2 rounded-md">
-                      <Briefcase className="w-4 h-4 text-indigo-600 dark:text-indigo-300" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                        Rank {candidate.rank}: {candidate.name}
-                      </h3>
-                      <p className="text-sm text-gray-700 dark:text-gray-200">
-                        Email: {candidate.email}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="space-y-2 text-sm text-gray-700 dark:text-gray-200">
-                    <p>
-                      Total Score: {(candidate.total_score || 0).toFixed(2)}
-                    </p>
-                    <p>
-                      Skill Score: {(candidate.skill_score || 0).toFixed(2)}
-                    </p>
-                    <p>
-                      Experience Score:{' '}
-                      {(candidate.experience_score || 0).toFixed(2)}
-                    </p>
-                    {candidate.description && <p>{candidate.description}</p>}
-                    {data.ai_enabled && candidate.ai_feedback && (
-                      <div className="mt-4">
-                        <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
-                          AI Feedback
-                        </h4>
-                        <p className="text-sm">
-                          {candidate.ai_feedback.summary}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm text-center border border-gray-200 dark:border-gray-600">
-            <p className="text-sm text-gray-700 dark:text-gray-200">
-              No candidates registered.
+            <h1 className="text-5xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-800 bg-clip-text text-transparent mb-4">
+              Candidate Rankings for {data.job_title}
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 text-lg max-w-2xl mx-auto">
+              Review candidate scores and download detailed reports
             </p>
           </div>
-        )}
+
+          <div className="flex justify-between items-center mb-12">
+            <Link
+              to="/recruiter/dashboard"
+              className="inline-flex items-center text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-200 font-medium text-base transition-all duration-200"
+            >
+              <ChevronRight className="w-5 h-5 mr-1 rotate-180" />
+              Back to Dashboard
+            </Link>
+            <button
+              onClick={handleDownloadReport}
+              className="flex items-center px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-medium text-base hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 gap-2"
+            >
+              <Download className="w-5 h-5" />
+              <span>Download Report</span>
+            </button>
+          </div>
+
+          {data.candidates.length > 0 ? (
+            <div id="report-section">
+              <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300">
+                <div className="flex items-center mb-6">
+                  <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
+                    <Briefcase className="w-8 h-8 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                      Score Distribution
+                    </h2>
+                    <p className="text-gray-600 dark:text-gray-400">
+                      Visualize candidate performance across different metrics
+                    </p>
+                  </div>
+                </div>
+                <div className="w-full flex justify-center">
+                  <div className="w-full max-w-full">
+                    <Bar data={chartData} options={chartOptions} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 mb-12 hover:shadow-2xl transition-all duration-300 overflow-x-auto">
+                <div className="flex items-center mb-6">
+                  <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
+                    <Briefcase className="w-8 h-8 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                      Candidate Details
+                    </h2>
+                    <p className="text-gray-600 dark:text-gray-400">
+                      Detailed scores and rankings
+                    </p>
+                  </div>
+                </div>
+                <table className="min-w-full">
+                  <thead>
+                    <tr className="bg-gray-100/50 dark:bg-gray-700/50 backdrop-blur-sm">
+                      <th className="py-4 px-6 text-left text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-gray-200/50 dark:border-gray-700/50">
+                        Rank
+                      </th>
+                      <th className="py-4 px-6 text-left text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-gray-200/50 dark:border-gray-700/50">
+                        Name
+                      </th>
+                      <th className="py-4 px-6 text-left text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-gray-200/50 dark:border-gray-700/50">
+                        Email
+                      </th>
+                      <th className="py-4 px-6 text-left text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-gray-200/50 dark:border-gray-700/50">
+                        Total Score
+                      </th>
+                      <th className="py-4 px-6 text-left text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-gray-200/50 dark:border-gray-700/50">
+                        Skill Score
+                      </th>
+                      <th className="py-4 px-6 text-left text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-gray-200/50 dark:border-gray-700/50">
+                        Experience Score
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.candidates.map((candidate) => (
+                      <tr
+                        key={candidate.candidate_id}
+                        className="hover:bg-gray-50/50 dark:hover:bg-gray-700/50 transition-all duration-200"
+                      >
+                        <td className="py-4 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200/50 dark:border-gray-700/50">
+                          {candidate.rank}
+                        </td>
+                        <td className="py-4 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200/50 dark:border-gray-700/50">
+                          {candidate.name}
+                        </td>
+                        <td className="py-4 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200/50 dark:border-gray-700/50">
+                          {candidate.email}
+                        </td>
+                        <td className="py-4 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200/50 dark:border-gray-700/50">
+                          {(candidate.total_score || 0).toFixed(2)}
+                        </td>
+                        <td className="py-4 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200/50 dark:border-gray-700/50">
+                          {(candidate.skill_score || 0).toFixed(2)}
+                        </td>
+                        <td className="py-4 px-6 text-sm text-gray-700 dark:text-gray-200 border-b border-gray-200/50 dark:border-gray-700/50">
+                          {(candidate.experience_score || 0).toFixed(2)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 hover:shadow-2xl transition-all duration-300">
+                <div className="flex items-center mb-6">
+                  <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl mr-4">
+                    <Briefcase className="w-8 h-8 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
+                      Candidate Profiles
+                    </h2>
+                    <p className="text-gray-600 dark:text-gray-400">
+                      Detailed candidate information and AI feedback
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {data.candidates.map((candidate) => (
+                    <div
+                      key={candidate.candidate_id}
+                      className="bg-white/50 dark:bg-gray-700/50 backdrop-blur-sm rounded-2xl shadow-md border border-gray-200/50 dark:border-gray-700/50 p-6 hover:shadow-xl hover:scale-105 transition-all duration-300"
+                    >
+                      <div className="flex items-start gap-3 mb-4">
+                        <div className="p-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl">
+                          <Briefcase className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                            Rank {candidate.rank}: {candidate.name}
+                          </h3>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            Email: {candidate.email}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="space-y-2 text-sm text-gray-700 dark:text-gray-200">
+                        <p className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900 dark:text-gray-100">
+                            Total Score:
+                          </span>{' '}
+                          {(candidate.total_score || 0).toFixed(2)}
+                        </p>
+                        <p className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900 dark:text-gray-100">
+                            Skill Score:
+                          </span>{' '}
+                          {(candidate.skill_score || 0).toFixed(2)}
+                        </p>
+                        <p className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900 dark:text-gray-100">
+                            Experience Score:
+                          </span>{' '}
+                          {(candidate.experience_score || 0).toFixed(2)}
+                        </p>
+                        {candidate.description && (
+                          <p className="mt-2">{candidate.description}</p>
+                        )}
+                        {data.ai_enabled && candidate.ai_feedback && (
+                          <div className="mt-4">
+                            <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                              AI Feedback
+                            </h4>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                              {candidate.ai_feedback.summary}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 text-center hover:shadow-2xl transition-all duration-300">
+              <p className="text-base text-gray-600 dark:text-gray-400">
+                No candidates registered.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

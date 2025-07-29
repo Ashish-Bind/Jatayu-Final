@@ -16,4 +16,5 @@ COPY . .
 
 EXPOSE 5000
 
-CMD ["python", "run.py"]
+# Run with Gunicorn
+CMD ["gunicorn", "run:app", "--bind", "0.0.0.0:5000", "--workers", "4"]

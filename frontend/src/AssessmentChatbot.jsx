@@ -306,7 +306,7 @@ const AssessmentChatbot = () => {
     const numSnapshots = Math.floor(Math.random() * 3) + 3
     const intervals = Array.from(
       { length: numSnapshots },
-      () => Math.trunc(Math.random() * initialTimeLeft.current * 1000) / 100
+      () => Math.trunc(Math.random() * initialTimeLeft.current * 1000) / 10
     ).sort((a, b) => a - b)
 
     snapshotTimersRef.current = intervals.map((interval) =>
@@ -321,7 +321,7 @@ const AssessmentChatbot = () => {
               attemptId,
               webcamRef,
               () => {},
-              () => toast.success('Snapshot taken for proctoring')
+              () => {}
             )
           } catch (error) {
             toast.error('Failed to capture snapshot')

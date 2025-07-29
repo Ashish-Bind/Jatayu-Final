@@ -271,7 +271,7 @@ def create_client():
     db.session.add(reset_token)
 
     # Send password reset email
-    reset_url = f"http://localhost:5173/reset-password?token={token}"
+    reset_url = f"{os.getenv('CLIENT_BASE_URL')}/reset-password?token={token}"
     msg = Message(
         subject="Welcome to Quizzer - Set Your Password",
         sender=os.getenv('MAIL_DEFAULT_SENDER'),

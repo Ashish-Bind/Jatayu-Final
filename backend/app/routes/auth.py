@@ -60,7 +60,7 @@ def signup():
     if role == 'candidate':
         # Generate confirmation token
         token = secrets.token_urlsafe(32)
-        confirmation_url = f'http://localhost:5173/candidate/confirm?token={token}'
+        confirmation_url = f'{os.getenv('CLIENT_BASE_URL')}/candidate/confirm?token={token}'
         confirmation_token = PasswordResetToken(
             user_id=user.id,
             token=token,
@@ -286,7 +286,7 @@ def forgot_password():
     db.session.add(reset_token)
     db.session.commit()
 
-    reset_url = f"http://localhost:5173/reset-password?token={token}"
+    reset_url = f"{os.getenv('CLIENT_BASE_URL')}/reset-password?token={token}"
     msg = Message(
         subject="Password Reset Request",
         recipients=[user.email],

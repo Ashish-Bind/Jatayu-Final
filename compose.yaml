@@ -4,10 +4,10 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     container_name: quizzer-frontend
     ports:
-      - '5173:5173'
+      - '5173:80'
     environment:
       - VITE_API_BASE_URL=http://localhost:5000/api
     develop:
@@ -18,12 +18,12 @@ services:
           target: /app
           action: sync
     depends_on:
-      - backend
+      - flask-app
 
   flask-app:
     build:
       context: ./backend
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     env_file:
       - ./backend/.env
     container_name: quizzer-backend
