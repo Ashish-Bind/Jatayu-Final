@@ -16,7 +16,6 @@ import requests
 
 auth_bp = Blueprint('auth', __name__)
 
-
 # Email verification helper
 def verify_email(email, api_key=os.getenv('EMAILABLE_API_KEY')):
     url = f'https://api.emailable.com/v1/verify?email={email}&api_key={api_key}'
@@ -29,7 +28,6 @@ def verify_email(email, api_key=os.getenv('EMAILABLE_API_KEY')):
         return False, data.get('reason', 'Email is not deliverable.')
     except requests.RequestException as e:
         return False, f'Email verification failed: {str(e)}'
-
 
 # Signup route
 @auth_bp.route('/signup', methods=['POST'])
@@ -54,7 +52,6 @@ def signup():
 
     db.session.add(user)
     db.session.commit()
-
 
     # Add user to Candidate or Recruiter table
     if role == 'candidate':
@@ -96,15 +93,15 @@ def signup():
     db.session.commit()
     return jsonify({'message': f'{role.capitalize()} signup successful'}), 200
 
-
 # Login route
+# auth.py
 @auth_bp.route('/login', methods=['POST'])
 @limiter.limit("10/minute")
 def login():
     data = request.json
     user = User.query.filter_by(email=data['email']).first()
 
-    if not user or user.role != 'candidate' or not user.is_active or not user.check_password(data['password']):
+    if not user or not user.is_active or not user.check_password(data['password']):
         return jsonify({'error': 'Invalid credentials'}), 401
 
     # Save user session
@@ -116,10 +113,6 @@ def login():
     current_ip = request.remote_addr
     print(f"📡 Received location: {location}")
     print(f"📡 Current IP address: {current_ip}")
-
-    candidate = Candidate.query.filter_by(user_id=user.id).first()
-    if not candidate:
-        return jsonify({'error': 'Candidate profile not found'}), 404
 
     try:
         login_log = LoginLog(
@@ -134,10 +127,12 @@ def login():
         )
         db.session.add(login_log)
         db.session.commit()
-        print(f"✅ Login log saved for user_id={user.id}")
+        print(f"✅ Login log saved for user_id={user.id}, ip={current_ip}, lat={location.get('latitude')}, lon={location.get('longitude')}")
     except Exception as e:
         db.session.rollback()
         print(f"❌ Error saving login log: {e}")
+        # Continue with login even if log fails, but notify
+        return jsonify({'error': 'Failed to save login log, but login proceeding'}), 500
 
     # Check last login
     enforce_otp_verification = False
@@ -150,79 +145,139 @@ def login():
     )
     print(f"📖 Last login found: log_id={last_log.log_id if last_log else None}, IP={last_log.ip_address if last_log else None}, Lat={last_log.latitude if last_log else None}, Lon={last_log.longitude if last_log else None}")
 
-    if (
-        last_log and
-        last_log.latitude is not None and last_log.longitude is not None and
-        location.get('latitude') is not None and location.get('longitude') is not None
-    ):
-        prev_coords = (last_log.latitude, last_log.longitude)
-        current_coords = (location['latitude'], location['longitude'])
-        try:
-            distance_km = geodesic(prev_coords, current_coords).km
-            print(f"📏 Distance from last login: {distance_km:.2f} km")
-            if distance_km > 100:
+    if user.role == 'candidate':
+        candidate = Candidate.query.filter_by(user_id=user.id).first()
+        if not candidate:
+            return jsonify({'error': 'Candidate profile not found'}), 404
+        if (
+            last_log and
+            last_log.latitude is not None and last_log.longitude is not None and
+            location.get('latitude') is not None and location.get('longitude') is not None
+        ):
+            prev_coords = (last_log.latitude, last_log.longitude)
+            current_coords = (location['latitude'], location['longitude'])
+            try:
+                distance_km = geodesic(prev_coords, current_coords).km
+                print(f"📏 Distance from last login: {distance_km:.2f} km")
+                if distance_km > 100:
+                    enforce_otp_verification = True
+                    candidate.requires_otp_verification = True
+                    print("⚠️ Location changed significantly (>100km). Enforcing OTP verification for candidate.")
+            except Exception as e:
+                print(f"❌ Error calculating distance: {e}")
                 enforce_otp_verification = True
-                candidate.requires_otp_verification = True  # Set the flag
-                print("⚠️ Location changed significantly (>100km). Enforcing OTP verification.")
-        except Exception as e:
-            print(f"❌ Error calculating distance: {e}")
+                candidate.requires_otp_verification = True
+        elif last_log and last_log.ip_address != current_ip:
+            print(f"⚠️ IP changed: {last_log.ip_address} -> {current_ip}. Enforcing OTP verification for candidate.")
             enforce_otp_verification = True
             candidate.requires_otp_verification = True
-    elif last_log and last_log.ip_address != current_ip:
-        print(f"⚠️ IP changed: {last_log.ip_address} -> {current_ip}. Enforcing OTP verification.")
-        enforce_otp_verification = True
-        candidate.requires_otp_verification = True
-    elif not last_log:
-        print("⚠️ First login detected. Enforcing OTP verification.")
-        enforce_otp_verification = True
-        candidate.requires_otp_verification = True
-    else:
-        print("✅ No significant location/IP change detected.")
-
-    # Commit the change to requires_otp_verification
-    try:
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        print(f"❌ Error updating candidate requires_otp_verification: {e}")
-        return jsonify({'error': 'Failed to process login'}), 500
+        elif not last_log:
+            print("⚠️ First login detected. Enforcing OTP verification for candidate.")
+            enforce_otp_verification = True
+            candidate.requires_otp_verification = True
+        else:
+            print("✅ No significant location/IP change detected for candidate.")
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Error updating candidate requires_otp_verification: {e}")
+            return jsonify({'error': 'Failed to process login'}), 500
+    elif user.role == 'recruiter':
+        recruiter = Recruiter.query.filter_by(user_id=user.id).first()
+        if not recruiter:
+            return jsonify({'error': 'Recruiter profile not found'}), 404
+        if (
+            last_log and
+            last_log.latitude is not None and last_log.longitude is not None and
+            location.get('latitude') is not None and location.get('longitude') is not None
+        ):
+            prev_coords = (last_log.latitude, last_log.longitude)
+            current_coords = (location['latitude'], location['longitude'])
+            try:
+                distance_km = geodesic(prev_coords, current_coords).km
+                print(f"📏 Distance from last login: {distance_km:.2f} km")
+                if distance_km > 500:
+                    enforce_otp_verification = True
+                    recruiter.requires_otp_verification = True
+                    print("⚠️ Location changed significantly (>500km). Enforcing OTP verification for recruiter.")
+            except Exception as e:
+                print(f"❌ Error calculating distance: {e}")
+                enforce_otp_verification = True
+                recruiter.requires_otp_verification = True
+        elif last_log and last_log.ip_address != current_ip:
+            print(f"⚠️ IP changed: {last_log.ip_address} -> {current_ip}. Enforcing OTP verification for recruiter.")
+            enforce_otp_verification = True
+            recruiter.requires_otp_verification = True
+        elif not last_log:
+            print("⚠️ First login detected. Enforcing OTP verification for recruiter.")
+            enforce_otp_verification = True
+            recruiter.requires_otp_verification = True
+        else:
+            print("✅ No significant location/IP change detected for recruiter.")
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Error updating recruiter requires_otp_verification: {e}")
+            return jsonify({'error': 'Failed to process login'}), 500
 
     # Save enforce flag in session for backward compatibility
     session['enforce_otp_verification'] = enforce_otp_verification
 
+    # Include reason for OTP enforcement in response
+    otp_reason = None
+    if enforce_otp_verification:
+        if not last_log:
+            otp_reason = "First login detected"
+        elif last_log and last_log.ip_address != current_ip:
+            otp_reason = "New IP address detected"
+        elif distance_km > 500 and user.role == 'recruiter':
+            otp_reason = f"New login location detected (>500km from previous login)"
+        elif distance_km > 100 and user.role == 'candidate':
+            otp_reason = f"New login location detected (>100km from previous login)"
+
     return jsonify({
         'message': 'Login successful',
         'role': user.role,
-        'enforce_otp_verification': enforce_otp_verification
+        'enforce_otp_verification': enforce_otp_verification,
+        'otp_reason': otp_reason
     }), 200
-
-
 
 # Auth check route
 @auth_bp.route('/check')
 def check_auth():
     if 'user_id' not in session or 'role' not in session:
         return jsonify({'error': 'Not authenticated'}), 401
-        
+    
     role = session['role']
     
     if role == 'superadmin':
         superadmin = Superadmin.query.get(session['user_id'])
         if not superadmin:
             return jsonify({'error': 'Superadmin not found'}), 404
-        
-        if superadmin:
-            return jsonify({
-                'user': {
-                    'id': superadmin.id,
-                    'email': superadmin.email,
-                    'role': 'superadmin'
-                }
-            }), 200
+        return jsonify({
+            'user': {
+                'id': superadmin.id,
+                'email': superadmin.email,
+                'role': 'superadmin'
+            }
+        }), 200
 
     user = User.query.get(session['user_id'])
     if not user:
         return jsonify({'error': 'User not found'}), 404
+
+    # Check if OTP verification is pending
+    if role == 'recruiter':
+        recruiter = Recruiter.query.filter_by(user_id=user.id).first()
+        if recruiter and recruiter.requires_otp_verification:
+            return jsonify({
+                'error': 'OTP verification required',
+                'enforce_otp_verification': True,
+                'email': user.email,
+                'otp_reason': session.get('otp_reason', 'OTP verification required')
+            }), 401
 
     enforce_otp_verification = session.get('enforce_otp_verification', False)
 
@@ -256,13 +311,12 @@ def check_auth():
                 'recruiter_id': recruiter.recruiter_id,
                 'company': recruiter.company,
                 'phone': recruiter.phone,
-                'subscription_plan': recruiter.subscription_plan.name if recruiter.subscription_plan else None
+                'subscription_plan': recruiter.subscription_plan.name if recruiter.subscription_plan else None,
+                'requires_otp_verification': recruiter.requires_otp_verification
             })
 
     print(f"✅ Auth check: {response['user']}")
     return jsonify(response)
-
-
 
 # Forgot password
 @auth_bp.route('/forgot-password', methods=['POST'])
@@ -311,7 +365,6 @@ def forgot_password():
         db.session.commit()
         return jsonify({'error': 'Failed to send reset email'}), 500
 
-
 # Reset password
 @auth_bp.route('/reset-password', methods=['POST'])
 def reset_password():
@@ -341,7 +394,6 @@ def reset_password():
 
     return jsonify({'message': 'Password reset successfully'}), 200
 
-
 # Confirm email
 @auth_bp.route('/confirm', methods=['POST'])
 def confirm_email():
@@ -366,7 +418,6 @@ def confirm_email():
     db.session.commit()
 
     return jsonify({'message': 'Email confirmed successfully. You can now log in.'}), 200
-
 
 # Logout route
 @auth_bp.route('/logout', methods=['POST'])

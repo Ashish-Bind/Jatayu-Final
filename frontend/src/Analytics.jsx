@@ -309,13 +309,6 @@ const Analytics = () => {
     }
   }
 
-  const handleDownloadReport = (candidateId) => {
-    downloadAsPDF(
-      `candidate-report-${candidateId}`,
-      `Candidate_Report_${candidateId}`
-    )
-  }
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-gray-900 dark:to-slate-900">
@@ -614,16 +607,6 @@ const Analytics = () => {
                             <Ban className="w-4 h-4 mr-2" />
                             Block
                           </Button>
-                          <Button
-                            variant="link"
-                            onClick={() =>
-                              handleDownloadReport(candidate.candidate_id)
-                            }
-                            className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 transition-all duration-200 flex items-center"
-                          >
-                            <Download className="w-4 h-4 mr-2" />
-                            Report
-                          </Button>
                         </div>
                       </td>
                     </motion.tr>
@@ -753,56 +736,6 @@ const Analytics = () => {
                   ))}
                 </tbody>
               </table>
-            </div>
-          </motion.div>
-
-          {/* Reports Download */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 1.0, duration: 0.8 }}
-            className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-lg rounded-3xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 p-8 hover:shadow-2xl transition-all duration-300"
-          >
-            <div className="flex items-center mb-8">
-              <div className="p-3 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl mr-4">
-                <FileText className="w-8 h-8 text-white" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  Reports
-                </h2>
-                <p className="text-gray-600 dark:text-gray-400">
-                  Download comprehensive analytics reports
-                </p>
-              </div>
-            </div>
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Button
-                variant="primary"
-                onClick={() =>
-                  downloadAsPDF('analytics-report', 'Analytics_Report')
-                }
-                className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center"
-              >
-                <Download className="w-5 h-5 mr-2" />
-                Download Analytics Report
-              </Button>
-            </motion.div>
-            <div id="analytics-report" className="hidden">
-              <h1>Analytics Report</h1>
-              <p>Total Candidates: {candidates.length}</p>
-              <p>Total Jobs: {jobs.length}</p>
-              <p>Shortlisted Candidates: {shortlistedCandidates.length}</p>
-              <h2>Candidate Details</h2>
-              <ul>
-                {candidates.map((c) => (
-                  <li key={c.candidate_id}>
-                    {c.name} - Score:{' '}
-                    {c.total_score ? c.total_score.toFixed(2) : 'N/A'}% -
-                    Status: {c.status}
-                  </li>
-                ))}
-              </ul>
             </div>
           </motion.div>
         </div>

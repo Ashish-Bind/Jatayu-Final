@@ -78,7 +78,7 @@ const CandidateOverview = () => {
   const [error, setError] = useState('')
 
   const links = [
-    { name: 'Profile', link: '/candidate/profile', icon: User },
+    { name: 'Profile', link: '/candidate/complete-profile', icon: User },
     { name: 'Dashboard', link: '/candidate/dashboard', icon: BookOpen },
     { name: 'Reports', link: '/candidate/results', icon: Award },
   ]

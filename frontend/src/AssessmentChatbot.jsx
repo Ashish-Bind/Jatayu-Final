@@ -1,12 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import Modal from 'react-modal'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import Navbar from './components/Navbar'
 import Button from './components/Button'
 import toast from 'react-hot-toast'
-import { MAX_FULLSCREEN_WARNINGS, MAX_TAB_SWITCHES } from './utils/constants'
+import { MAX_TAB_SWITCHES } from './utils/constants'
 import AssessmentMessages from './components/AssessmentMessages'
 import {
   formatTime,
@@ -14,7 +12,6 @@ import {
   fetchNextQuestion,
   endAssessment,
   captureSnapshot,
-  requestFullscreen,
   parseContent,
   renderContent,
   baseUrl,
@@ -32,23 +29,23 @@ import {
 import * as cocoSsd from '@tensorflow-models/coco-ssd'
 import '@tensorflow/tfjs'
 import Webcam from 'react-webcam'
-
-// Bind Modal to the root element for accessibility
-Modal.setAppElement('#root')
+import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision'
 
 const VIDEO_WIDTH = 400
 const VIDEO_HEIGHT = 300
 const videoConstraints = {
   width: VIDEO_WIDTH,
   height: VIDEO_HEIGHT,
-  facingMode: 'environment',
+  facingMode: 'user',
 }
 const COOLDOWN_SECONDS = {
   multiPerson: 10,
   cellPhone: 10,
   noPerson: 10,
+  gazeAway: 5,
 }
 const NO_PERSON_TIMEOUT = 10
+const MINIMUM_SNAPSHOT_DELAY = 2000 // 2 seconds
 
 const AssessmentChatbot = () => {
   const { attemptId } = useParams()
@@ -63,26 +60,23 @@ const AssessmentChatbot = () => {
   const [timeLeft, setTimeLeft] = useState(null)
   const [errorMessage, setErrorMessage] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [tabSwitches, setTabSwitches] = useState(0)
   const [questionPending, setQuestionPending] = useState(false)
   const [awaitingNextQuestion, setAwaitingNextQuestion] = useState(false)
-  const [fullscreenWarnings, setFullscreenWarnings] = useState(0)
-  const [showFullscreenWarning, setShowFullscreenWarning] = useState(false)
-  const [fullscreenPermissionError, setFullscreenPermissionError] =
-    useState(false)
-  const [tabSwitches, setTabSwitches] = useState(0)
   const [webcamError, setWebcamError] = useState('')
   const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false)
   const [questionStartTime, setQuestionStartTime] = useState(null)
   const [usedMcqIds, setUsedMcqIds] = useState([])
-  const [model, setModel] = useState(null)
-  const [modelLoading, setModelLoading] = useState(false)
+  const [cocoSsdModel, setCocoSsdModel] = useState(null)
+  const [faceLandmarkerModel, setFaceLandmarkerModel] = useState(null)
+  const [modelLoading, setModelLoading] = useState(true)
   const [capturedImg, setCapturedImg] = useState(null)
   const [lastPersonDetected, setLastPersonDetected] = useState(Date.now())
+  const [webcamKey, setWebcamKey] = useState(0)
+
   const initialStartComplete = useRef(false)
   const currentMcqId = useRef(null)
   const chatContainerRef = useRef(null)
-  const assessmentContainerRef = useRef(null)
-  const modalButtonRef = useRef(null)
   const webcamRef = useRef(null)
   const canvasRef = useRef(null)
   const streamRef = useRef(null)
@@ -90,32 +84,79 @@ const AssessmentChatbot = () => {
   const snapshotScheduled = useRef(false)
   const snapshotTimersRef = useRef([])
   const tabSwitchesRef = useRef(tabSwitches)
-  const fullscreenWarningsRef = useRef(fullscreenWarnings)
+  const violationQueue = useRef([])
+  const snapshotQueue = useRef([])
+  const isProcessingViolation = useRef(false)
+  const isProcessingSnapshot = useRef(false)
+  const isGettingStream = useRef(false)
   const cooldownRef = useRef({
     multiPerson: 0,
     cellPhone: 0,
     noPerson: 0,
+    gazeAway: 0,
   })
-  const violationQueue = useRef([])
-  const isProcessing = useRef(false)
 
-  // Load COCO-SSD model
+  // Cleanup on unmount
   useEffect(() => {
-    async function loadModel() {
+    return () => {
+      snapshotTimersRef.current.forEach(clearTimeout)
+      snapshotTimersRef.current = []
+      snapshotScheduled.current = false
+      if (streamRef.current) {
+        console.log('Cleaning up AssessmentChatbot stream...')
+        streamRef.current.getTracks().forEach((track) => track.stop())
+        streamRef.current = null
+      }
+      if (faceLandmarkerModel) {
+        console.log('Closing Face Landmarker model...')
+        faceLandmarkerModel.close()
+      }
+    }
+  }, [faceLandmarkerModel])
+
+  // Load COCO-SSD and FaceLandmarker models
+  useEffect(() => {
+    async function loadModels() {
       setModelLoading(true)
       try {
-        const loadedModel = await cocoSsd.load()
-        setModel(loadedModel)
+        const [cocoSsdLoadedModel, vision] = await Promise.all([
+          cocoSsd.load(),
+          FilesetResolver.forVisionTasks(
+            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
+          ),
+        ])
+        setCocoSsdModel(cocoSsdLoadedModel)
+
+        const faceLandmarkerLoadedModel =
+          await FaceLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath:
+                'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+              delegate: 'GPU',
+            },
+            runningMode: 'VIDEO',
+            outputFaceBlendshapes: false,
+            numFaces: 1,
+          })
+        setFaceLandmarkerModel(faceLandmarkerLoadedModel)
+        console.log('✅ All models loaded')
+        setErrorMessage('')
       } catch (error) {
-        toast.error('Failed to load object detection model')
+        toast.error(
+          'Failed to load one or more object detection models. Please refresh the page.'
+        )
+        console.error('Error loading models:', error)
+        setErrorMessage(
+          'Failed to load critical AI models. Please refresh the page and try again.'
+        )
       } finally {
         setModelLoading(false)
       }
     }
-    loadModel()
+    loadModels()
   }, [])
 
-  // Draw Predictions
+  // Draw Predictions for COCO-SSD
   const drawPredictions = useCallback((predictions) => {
     const ctx = canvasRef.current?.getContext('2d')
     if (ctx) {
@@ -159,11 +200,11 @@ const AssessmentChatbot = () => {
         if (data.error) {
           toast.error(data.error)
         } else {
-          toast.success('Violation recorded successfully')
+          console.log('Violation recorded successfully')
         }
       } catch (error) {
-        toast.error('Failed to record violation')
-        console.error('Error:', error)
+        console.log('Failed to record violation')
+        console.error('Violation error:', error)
       }
     },
     [attemptId]
@@ -171,12 +212,13 @@ const AssessmentChatbot = () => {
 
   // Process Violation Queue
   const processViolationQueue = useCallback(async () => {
-    if (isProcessing.current || violationQueue.current.length === 0) return
+    if (isProcessingViolation.current || violationQueue.current.length === 0)
+      return
 
-    isProcessing.current = true
+    isProcessingViolation.current = true
     const { violationType, imageSrc } = violationQueue.current.shift()
     await captureImage(violationType, imageSrc)
-    isProcessing.current = false
+    isProcessingViolation.current = false
 
     if (violationQueue.current.length > 0) {
       processViolationQueue()
@@ -186,113 +228,79 @@ const AssessmentChatbot = () => {
   // Queue Violation
   const queueViolation = useCallback(
     (violationType) => {
-      if (webcamRef.current && webcamRef.current.video) {
-        const imageSrc = webcamRef.current.getScreenshot()
-        setCapturedImg(imageSrc)
-        violationQueue.current.push({ violationType, imageSrc })
-        processViolationQueue()
+      if (
+        webcamRef.current &&
+        webcamRef.current.video &&
+        webcamRef.current.video.readyState === 4
+      ) {
+        try {
+          const imageSrc = webcamRef.current.getScreenshot()
+          if (imageSrc) {
+            setCapturedImg(imageSrc)
+            violationQueue.current.push({ violationType, imageSrc })
+            processViolationQueue()
+          } else {
+            console.warn(
+              'Could not capture screenshot for violation:',
+              violationType
+            )
+          }
+        } catch (error) {
+          console.error('Error capturing screenshot for violation:', error)
+        }
+      } else {
+        console.warn('Webcam not ready to capture violation:', violationType)
       }
     },
     [processViolationQueue]
   )
 
-  // Detection loop
-  useEffect(() => {
-    let animationId
-    const detectFrame = async () => {
-      if (
-        webcamRef.current &&
-        webcamRef.current.video &&
-        webcamRef.current.video.readyState === 4 &&
-        model
-      ) {
-        const predictions = await model.detect(webcamRef.current.video)
-        drawPredictions(predictions)
+  // Process Snapshot Queue
+  const processSnapshotQueue = useCallback(async () => {
+    if (isProcessingSnapshot.current || snapshotQueue.current.length === 0)
+      return
 
-        // Person Check
-        const personCount = predictions.filter(
-          (p) => p.class.toLowerCase() === 'person'
-        ).length
+    isProcessingSnapshot.current = true
+    const { imageSrc } = snapshotQueue.current.shift()
+    try {
+      await captureSnapshot(
+        attemptId,
+        {
+          current: {
+            getScreenshot: () => imageSrc,
+            video: webcamRef.current.video,
+          },
+        },
+        () => {},
+        () => {}
+      )
+    } catch (error) {
+      console.error('Snapshot queue error:', error)
+    }
+    isProcessingSnapshot.current = false
 
-        // Multi-Person Cooldown
-        if (personCount > 1) {
-          const now = Date.now()
-          if (
-            now - cooldownRef.current.multiPerson >
-            COOLDOWN_SECONDS.multiPerson * 1000
-          ) {
-            cooldownRef.current.multiPerson = now
-            toast.error('Multiple persons detected!', {
-              autoClose: 2000,
-              position: 'top-center',
-            })
-            queueViolation('multiple_faces')
-          }
-        }
+    if (snapshotQueue.current.length > 0) {
+      processSnapshotQueue()
+    }
+  }, [attemptId])
 
-        // No Person Tracking
-        if (personCount > 0) {
-          setLastPersonDetected(Date.now())
-        }
-
-        // Cell Phone Cooldown
-        const cellPhoneFound = predictions.some(
-          (p) => p.class.toLowerCase() === 'cell phone'
-        )
-        if (cellPhoneFound) {
-          const now = Date.now()
-          if (
-            now - cooldownRef.current.cellPhone >
-            COOLDOWN_SECONDS.cellPhone * 1000
-          ) {
-            cooldownRef.current.cellPhone = now
-            toast.error('Cell phone detected!', {
-              autoClose: 2000,
-              position: 'top-center',
-            })
-            queueViolation('mobile_phone')
-          }
-        }
-
-        // No Person Cooldown
-        const secondsSince = (Date.now() - lastPersonDetected) / 1000
-        if (personCount === 0 && secondsSince > NO_PERSON_TIMEOUT) {
-          const now = Date.now()
-          if (
-            now - cooldownRef.current.noPerson >
-            COOLDOWN_SECONDS.noPerson * 1000
-          ) {
-            cooldownRef.current.noPerson = now
-            toast('No person detected for too long!', {
-              autoClose: 2500,
-              position: 'top-center',
-              style: {
-                background: '#fef3c7',
-                color: '#b45309',
-              },
-            })
-            queueViolation('no_face')
-          }
-        }
+  // Queue Snapshot
+  const queueSnapshot = useCallback(() => {
+    if (
+      webcamRef.current &&
+      webcamRef.current.video &&
+      webcamRef.current.video.readyState === 4
+    ) {
+      const imageSrc = webcamRef.current.getScreenshot()
+      if (imageSrc) {
+        snapshotQueue.current.push({ imageSrc })
+        processSnapshotQueue()
       }
-      animationId = requestAnimationFrame(detectFrame)
     }
+  }, [processSnapshotQueue])
 
-    if (model) {
-      animationId = requestAnimationFrame(detectFrame)
-    }
-    return () => cancelAnimationFrame(animationId)
-  }, [model, queueViolation, drawPredictions, lastPersonDetected])
-
-  useEffect(() => {
-    tabSwitchesRef.current = tabSwitches
-  }, [tabSwitches])
-
-  useEffect(() => {
-    fullscreenWarningsRef.current = fullscreenWarnings
-  }, [fullscreenWarnings])
-
-  const scheduleSnapshots = () => {
+  // Schedule Snapshots
+  const scheduleSnapshots = useCallback(() => {
     if (
       !initialStartComplete.current ||
       initialTimeLeft.current === null ||
@@ -309,29 +317,190 @@ const AssessmentChatbot = () => {
       () => Math.trunc(Math.random() * initialTimeLeft.current * 1000) / 10
     ).sort((a, b) => a - b)
 
-    snapshotTimersRef.current = intervals.map((interval) =>
-      setTimeout(async () => {
+    snapshotTimersRef.current = intervals.map((interval, index) =>
+      setTimeout(() => {
         if (
           !isAssessmentComplete &&
           streamRef.current &&
           webcamRef.current?.video
         ) {
-          try {
-            await captureSnapshot(
-              attemptId,
-              webcamRef,
-              () => {},
-              () => {}
-            )
-          } catch (error) {
-            toast.error('Failed to capture snapshot')
-          }
+          console.log(
+            `Scheduling snapshot ${
+              index + 1
+            } for attemptId: ${attemptId} at ${interval}ms`
+          )
+          queueSnapshot()
         }
-      }, interval)
+      }, Math.max(interval, MINIMUM_SNAPSHOT_DELAY))
     )
-  }
+  }, [attemptId, queueSnapshot, isAssessmentComplete])
 
-  const startAssessment = async () => {
+  // Detection loop for COCO-SSD and FaceLandmarker
+  useEffect(() => {
+    let animationId
+    const detectFrame = async () => {
+      if (
+        !webcamRef.current ||
+        !webcamRef.current.video ||
+        webcamRef.current.video.readyState !== 4 ||
+        (!cocoSsdModel && !faceLandmarkerModel)
+      ) {
+        animationId = requestAnimationFrame(detectFrame)
+        return
+      }
+
+      const video = webcamRef.current.video
+      const now = performance.now()
+
+      if (cocoSsdModel) {
+        try {
+          const predictions = await cocoSsdModel.detect(video)
+          drawPredictions(predictions)
+
+          const personCount = predictions.filter(
+            (p) => p.class.toLowerCase() === 'person'
+          ).length
+
+          if (personCount > 1) {
+            const nowTime = Date.now()
+            if (
+              nowTime - cooldownRef.current.multiPerson >
+              COOLDOWN_SECONDS.multiPerson * 1000
+            ) {
+              cooldownRef.current.multiPerson = nowTime
+              toast.error('Multiple persons detected!', {
+                autoClose: 2000,
+                position: 'top-center',
+              })
+              queueViolation('multiple_faces')
+            }
+          }
+
+          if (personCount > 0) {
+            setLastPersonDetected(Date.now())
+          }
+
+          const cellPhoneFound = predictions.some(
+            (p) => p.class.toLowerCase() === 'cell phone'
+          )
+          if (cellPhoneFound) {
+            const nowTime = Date.now()
+            if (
+              nowTime - cooldownRef.current.cellPhone >
+              COOLDOWN_SECONDS.cellPhone * 1000
+            ) {
+              cooldownRef.current.cellPhone = nowTime
+              toast.error('Cell phone detected!', {
+                autoClose: 2000,
+                position: 'top-center',
+              })
+              queueViolation('mobile_phone')
+            }
+          }
+
+          const secondsSince = (Date.now() - lastPersonDetected) / 1000
+          if (personCount === 0 && secondsSince > NO_PERSON_TIMEOUT) {
+            const nowTime = Date.now()
+            if (
+              nowTime - cooldownRef.current.noPerson >
+              COOLDOWN_SECONDS.noPerson * 1000
+            ) {
+              cooldownRef.current.noPerson = nowTime
+              toast('No person detected for too long!', {
+                autoClose: 2500,
+                position: 'top-center',
+                style: {
+                  background: '#fef3c7',
+                  color: '#b45309',
+                },
+              })
+              queueViolation('no_face')
+            }
+          }
+        } catch (error) {
+          console.error('Error during COCO-SSD detection:', error)
+        }
+      }
+
+      if (faceLandmarkerModel) {
+        try {
+          const results = faceLandmarkerModel.detectForVideo(video, now)
+          if (
+            results.faceLandmarks &&
+            results.faceLandmarks.length > 0 &&
+            results.faceLandmarks[0].length > 473
+          ) {
+            const landmarks = results.faceLandmarks[0]
+            const leftEyeOuter = landmarks[33]
+            const leftEyeInner = landmarks[133]
+            const leftIris = landmarks[468]
+
+            const eyeWidth = leftEyeInner.x - leftEyeOuter.x
+            const irisOffset = leftIris.x - leftEyeOuter.x
+            const normalized = irisOffset / eyeWidth
+
+            const nowTime = Date.now()
+            if (
+              (normalized < 0.35 || normalized > 0.65) &&
+              nowTime - cooldownRef.current.gazeAway >
+                COOLDOWN_SECONDS.gazeAway * 1000
+            ) {
+              cooldownRef.current.gazeAway = nowTime
+              toast('User is looking away from the screen!', {
+                icon: '⚠️',
+                duration: 2000,
+                position: 'top-center',
+                style: {
+                  background: '#fffbe6',
+                  color: '#ca8a04',
+                  border: '1px solid #fde047',
+                },
+              })
+              queueViolation('gaze_away')
+            }
+          }
+        } catch (error) {
+          console.error('Error during Gaze detection:', error)
+        }
+      }
+      animationId = requestAnimationFrame(detectFrame)
+    }
+
+    if (
+      !modelLoading &&
+      (cocoSsdModel || faceLandmarkerModel) &&
+      !errorMessage
+    ) {
+      animationId = requestAnimationFrame(detectFrame)
+    }
+    return () => cancelAnimationFrame(animationId)
+  }, [
+    cocoSsdModel,
+    faceLandmarkerModel,
+    queueViolation,
+    drawPredictions,
+    lastPersonDetected,
+    modelLoading,
+    errorMessage,
+  ])
+
+  useEffect(() => {
+    tabSwitchesRef.current = tabSwitches
+  }, [tabSwitches])
+
+  // Start Assessment
+  const startAssessment = useCallback(async () => {
+    if (modelLoading || errorMessage) {
+      console.log('startAssessment blocked: Model loading or existing error.')
+      return
+    }
+    if (initialStartComplete.current || isLoading || isAssessmentComplete) {
+      console.log(
+        'startAssessment blocked: Already started, loading, or complete.'
+      )
+      return
+    }
+
     setIsLoading(true)
     setErrorMessage('')
     setMessages([])
@@ -344,10 +513,7 @@ const AssessmentChatbot = () => {
     setIsGeneratingQuestion(false)
     setQuestionStartTime(null)
     setUsedMcqIds([])
-    setFullscreenWarnings(0)
     setTabSwitches(0)
-    setShowFullscreenWarning(false)
-    setFullscreenPermissionError(false)
     setWebcamError('')
     initialStartComplete.current = false
     initialTimeLeft.current = null
@@ -355,13 +521,91 @@ const AssessmentChatbot = () => {
     snapshotTimersRef.current.forEach(clearTimeout)
     snapshotTimersRef.current = []
     violationQueue.current = []
-    isProcessing.current = false
+    snapshotQueue.current = []
+    isProcessingViolation.current = false
+    isProcessingSnapshot.current = false
+    isGettingStream.current = false
+    cooldownRef.current = {
+      multiPerson: 0,
+      cellPhone: 0,
+      noPerson: 0,
+      gazeAway: 0,
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
+      console.log(
+        'Existing stream stopped in AssessmentChatbot.startAssessment (pre-acquisition).'
+      )
+    }
+
+    if (!isGettingStream.current) {
+      isGettingStream.current = true
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+        })
+        streamRef.current = stream
+        if (webcamRef.current && webcamRef.current.video) {
+          webcamRef.current.video.srcObject = stream
+          webcamRef.current.video.onplaying = () => {
+            console.log('Webcam stream is playing in AssessmentChatbot!')
+            setWebcamError('')
+          }
+          setTimeout(() => {
+            if (
+              webcamRef.current &&
+              webcamRef.current.video &&
+              webcamRef.current.video.readyState !== 4
+            ) {
+              setWebcamError(
+                'Webcam feed could not be started. Please ensure it is not in use by another application or check permissions.'
+              )
+              console.log('Webcam feed issues detected.')
+            }
+          }, 3000)
+        } else {
+          throw new Error(
+            'Webcam ref or video element not available to set stream.'
+          )
+        }
+        setWebcamError('')
+      } catch (error) {
+        if (
+          error.name === 'NotAllowedError' ||
+          error.name === 'PermissionDeniedError'
+        ) {
+          setWebcamError(
+            'Webcam access denied. Please allow webcam access in your browser settings to continue the assessment.'
+          )
+          toast.error('Webcam access denied.')
+        } else if (
+          error.name === 'NotFoundError' ||
+          error.name === 'DevicesNotFoundError'
+        ) {
+          setWebcamError(
+            'No webcam found. Please ensure a webcam is connected and enabled.'
+          )
+          toast.error('No webcam found.')
+        } else {
+          setWebcamError(
+            `Failed to start webcam in assessment: ${error.message}. Please retry or return to dashboard.`
+          )
+          toast.error(`Webcam error: ${error.message}`)
+        }
+        setErrorMessage(
+          `Failed to start the assessment due to webcam issues: ${error.message}`
+        )
+        setIsLoading(false)
+        isGettingStream.current = false
+        return
+      } finally {
+        isGettingStream.current = false
+      }
+    }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
-      streamRef.current = stream
-      if (webcamRef.current) webcamRef.current.video.srcObject = stream
-
       const response = await fetch(`${baseUrl}/assessment/start/${attemptId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -378,75 +622,25 @@ const AssessmentChatbot = () => {
       initialTimeLeft.current = data.test_duration
       initialStartComplete.current = true
       scheduleSnapshots()
-      await requestFullscreen().catch((err) => {
-        setFullscreenPermissionError(true)
-        setShowFullscreenWarning(true)
-        toast.error('Failed to enter fullscreen mode')
-      })
     } catch (error) {
-      if (
-        error.name === 'NotAllowedError' ||
-        error.name === 'PermissionDeniedError'
-      ) {
-        setWebcamError(
-          'Webcam access denied. Please allow webcam access to continue.'
-        )
-        toast.error(webcamError)
-      } else {
-        setErrorMessage(
-          `Failed to start the assessment: ${error.message}. Please retry or return to dashboard.`
-        )
-        toast.error(errorMessage)
-      }
+      setErrorMessage(
+        `Failed to start the assessment: ${error.message}. Please retry or return to dashboard.`
+      )
+      toast.error(errorMessage)
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [
+    attemptId,
+    modelLoading,
+    errorMessage,
+    isLoading,
+    isAssessmentComplete,
+    scheduleSnapshots,
+  ])
 
-  useEffect(() => {
-    return () => {
-      snapshotTimersRef.current.forEach(clearTimeout)
-      snapshotTimersRef.current = []
-      snapshotScheduled.current = false
-      if (streamRef.current)
-        streamRef.current.getTracks().forEach((track) => track.stop())
-    }
-  }, [])
-
-  const handleFullscreenChange = () => {
-    if (
-      !document.fullscreenElement &&
-      !isAssessmentComplete &&
-      initialStartComplete.current
-    ) {
-      setFullscreenWarnings((prev) => {
-        const newCount = prev + 1
-        if (newCount > MAX_FULLSCREEN_WARNINGS) {
-          endAssessment(
-            attemptId,
-            true,
-            'Terminated due to repeated fullscreen exits',
-            setIsAssessmentComplete,
-            setIsLoading,
-            setErrorMessage,
-            {
-              tabSwitches: tabSwitchesRef.current,
-              fullscreenWarnings: newCount,
-            },
-            () => navigate(`/candidate/assessment/${attemptId}/results`)
-          )
-        } else {
-          setShowFullscreenWarning(true)
-          toast.error(
-            `Exited fullscreen mode (${newCount}/${MAX_FULLSCREEN_WARNINGS})`
-          )
-        }
-        return newCount
-      })
-    }
-  }
-
-  const handleVisibilityChange = () => {
+  // Handle Tab Switches
+  const handleVisibilityChange = useCallback(() => {
     if (
       document.hidden &&
       !isAssessmentComplete &&
@@ -464,7 +658,6 @@ const AssessmentChatbot = () => {
             setErrorMessage,
             {
               tabSwitches: newCount,
-              fullscreenWarnings: fullscreenWarningsRef.current,
             },
             () => navigate(`/candidate/assessment/${attemptId}/results`)
           )
@@ -474,48 +667,38 @@ const AssessmentChatbot = () => {
         return newCount
       })
     }
-  }
-
-  useEffect(() => {
-    if (showFullscreenWarning && modalButtonRef.current)
-      modalButtonRef.current.focus()
-  }, [showFullscreenWarning])
+  }, [isAssessmentComplete, initialStartComplete, attemptId, navigate])
 
   useEffect(() => {
     if (isAssessmentComplete)
       navigate(`/candidate/assessment/${attemptId}/results`)
   }, [isAssessmentComplete, attemptId, navigate])
 
+  // Initialize Assessment
   useEffect(() => {
-    if (attemptId) startAssessment()
-    document.addEventListener('fullscreenchange', handleFullscreenChange)
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
-    document.addEventListener('mozfullscreenchange', handleFullscreenChange)
-    document.addEventListener('MSFullscreenChange', handleFullscreenChange)
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    const preventCopyPaste = (e) => {
-      e.preventDefault()
-      toast.error('Copy/paste is not allowed during the assessment')
-    }
-    document.addEventListener('copy', preventCopyPaste)
-    document.addEventListener('paste', preventCopyPaste)
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange)
-      document.removeEventListener(
-        'webkitfullscreenchange',
-        handleFullscreenChange
+    if (
+      attemptId &&
+      !modelLoading &&
+      cocoSsdModel &&
+      faceLandmarkerModel &&
+      !errorMessage
+    ) {
+      startAssessment()
+    } else if (attemptId && modelLoading) {
+      setErrorMessage(
+        'Please wait while the assessment is getting ready. This may take a few seconds.'
       )
-      document.removeEventListener(
-        'mozfullscreenchange',
-        handleFullscreenChange
-      )
-      document.removeEventListener('MSFullscreenChange', handleFullscreenChange)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      document.removeEventListener('copy', preventCopyPaste)
-      document.removeEventListener('paste', preventCopyPaste)
     }
-  }, [attemptId])
+  }, [
+    attemptId,
+    modelLoading,
+    cocoSsdModel,
+    faceLandmarkerModel,
+    errorMessage,
+    startAssessment,
+  ])
 
+  // Fetch Next Question
   useEffect(() => {
     if (
       initialStartComplete.current &&
@@ -541,7 +724,6 @@ const AssessmentChatbot = () => {
         setIsGeneratingQuestion,
         {
           tabSwitches: tabSwitchesRef.current,
-          fullscreenWarnings: fullscreenWarningsRef.current,
           forced: false,
           remark: 'None',
         }
@@ -558,6 +740,7 @@ const AssessmentChatbot = () => {
     questionNumber,
   ])
 
+  // Handle Awaiting Next Question
   useEffect(() => {
     if (
       awaitingNextQuestion &&
@@ -583,7 +766,6 @@ const AssessmentChatbot = () => {
           setIsGeneratingQuestion,
           {
             tabSwitches: tabSwitchesRef.current,
-            fullscreenWarnings: fullscreenWarningsRef.current,
             forced: false,
             remark: 'None',
           }
@@ -601,6 +783,7 @@ const AssessmentChatbot = () => {
     usedMcqIds,
   ])
 
+  // Timer
   useEffect(() => {
     if (timeLeft !== null) {
       const timer = setInterval(() => {
@@ -616,7 +799,6 @@ const AssessmentChatbot = () => {
               setErrorMessage,
               {
                 tabSwitches: tabSwitchesRef.current,
-                fullscreenWarnings: fullscreenWarningsRef.current,
               },
               () => navigate(`/candidate/assessment/${attemptId}/results`)
             )
@@ -629,10 +811,28 @@ const AssessmentChatbot = () => {
     }
   }, [timeLeft, attemptId, navigate])
 
+  // Auto-scroll Chat
   useEffect(() => {
     if (chatContainerRef.current)
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
   }, [messages])
+
+  // Event Listeners
+  useEffect(() => {
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    const preventCopyPaste = (e) => {
+      e.preventDefault()
+      toast.error('Copy/paste is not allowed during the assessment')
+    }
+    document.addEventListener('copy', preventCopyPaste)
+    document.addEventListener('paste', preventCopyPaste)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      document.removeEventListener('copy', preventCopyPaste)
+      document.removeEventListener('paste', preventCopyPaste)
+    }
+  }, [handleVisibilityChange])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-gray-900 dark:via-slate-900 dark:to-indigo-950 flex flex-col font-sans">
@@ -665,13 +865,6 @@ const AssessmentChatbot = () => {
                   Tab Switches: {tabSwitches}/{MAX_TAB_SWITCHES}
                 </span>
               </div>
-              <div className="flex items-center gap-3 text-gray-700 dark:text-gray-300">
-                <Camera className="w-5 h-5 text-indigo-500" />
-                <span>
-                  Fullscreen Warnings: {fullscreenWarnings}/
-                  {MAX_FULLSCREEN_WARNINGS}
-                </span>
-              </div>
               <div className="mt-8">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="p-3 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl">
@@ -683,6 +876,7 @@ const AssessmentChatbot = () => {
                 </div>
                 <div className="relative w-full aspect-video bg-gray-100/80 dark:bg-gray-700/80 rounded-2xl overflow-hidden border border-gray-200/50 dark:border-gray-700/50 shadow-inner">
                   <Webcam
+                    key={webcamKey}
                     ref={webcamRef}
                     width={VIDEO_WIDTH}
                     height={VIDEO_HEIGHT}
@@ -699,6 +893,12 @@ const AssessmentChatbot = () => {
                     style={{ pointerEvents: 'none' }}
                   />
                 </div>
+                {webcamError && (
+                  <div className="bg-red-50/80 dark:bg-red-900/20 border border-red-200/50 dark:border-red-700/50 text-red-700 dark:text-red-300 p-4 rounded-xl flex items-center gap-3 mt-4">
+                    <XCircle className="w-5 h-5" />
+                    <span>{webcamError}</span>
+                  </div>
+                )}
                 {capturedImg && (
                   <div className="mt-6">
                     <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
@@ -715,13 +915,6 @@ const AssessmentChatbot = () => {
             </div>
             <div className="mt-auto space-y-4">
               <Button
-                onClick={() => navigate('/candidate/dashboard')}
-                className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center gap-2"
-              >
-                <Home className="w-5 h-5" />
-                Back to Dashboard
-              </Button>
-              <Button
                 onClick={() =>
                   endAssessment(
                     attemptId,
@@ -732,7 +925,6 @@ const AssessmentChatbot = () => {
                     setErrorMessage,
                     {
                       tabSwitches: tabSwitchesRef.current,
-                      fullscreenWarnings: fullscreenWarningsRef.current,
                     },
                     () => navigate(`/candidate/assessment/${attemptId}/results`)
                   )
@@ -761,7 +953,7 @@ const AssessmentChatbot = () => {
                 <div className="ml-auto flex gap-4">
                   <Button
                     onClick={startAssessment}
-                    disabled={isLoading}
+                    disabled={isLoading || modelLoading}
                     className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 flex items-center gap-2"
                   >
                     <RefreshCw className="w-5 h-5" />
@@ -777,28 +969,15 @@ const AssessmentChatbot = () => {
                 </div>
               </div>
             )}
-            {webcamError && (
-              <div className="bg-red-50/80 dark:bg-red-900/20 border border-red-200/50 dark:border-red-700/50 text-red-700 dark:text-red-300 p-6 mb-8 rounded-2xl flex items-center gap-3 shadow-inner">
-                <XCircle className="w-6 h-6" />
-                <span className="text-base">{webcamError}</span>
-                <Button
-                  onClick={() => navigate('/candidate/dashboard')}
-                  className="ml-auto bg-gradient-to-r from-gray-500 to-gray-600 text-white px-4 py-2 rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-300 flex items-center gap-2"
-                >
-                  <Home className="w-5 h-5" />
-                  Dashboard
-                </Button>
-              </div>
-            )}
             {(isLoading || isGeneratingQuestion || modelLoading) && (
               <div className="bg-gray-50/80 dark:bg-gray-700/50 border border-gray-200/50 dark:border-gray-600/50 p-6 mb-8 rounded-2xl flex items-center gap-3 justify-center shadow-inner">
                 <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
                 <span className="text-base text-gray-700 dark:text-gray-200">
                   {modelLoading
-                    ? 'Loading object detection model...'
+                    ? 'Assessment is being set up, Please wait...'
                     : isGeneratingQuestion
                     ? 'Generating your next question...'
-                    : 'Loading...'}
+                    : 'Loading assessment...'}
                 </span>
               </div>
             )}
@@ -838,7 +1017,6 @@ const AssessmentChatbot = () => {
                   setErrorMessage,
                   {
                     tabSwitches: tabSwitchesRef.current,
-                    fullscreenWarnings: fullscreenWarningsRef.current,
                   },
                   () => navigate(`/candidate/assessment/${attemptId}/results`)
                 )
@@ -848,44 +1026,6 @@ const AssessmentChatbot = () => {
           </div>
         </div>
       </div>
-
-      <Modal
-        isOpen={showFullscreenWarning}
-        onRequestClose={() => {
-          setShowFullscreenWarning(false)
-          if (!fullscreenPermissionError) requestFullscreen()
-        }}
-        className="bg-yellow-50/80 dark:bg-yellow-900/20 border border-yellow-200/50 dark:border-yellow-700/50 text-yellow-700 dark:text-yellow-300 p-6 rounded-2xl max-w-md w-full mx-auto mt-20 shadow-xl"
-        overlayClassName="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center"
-        aria={{
-          labelledby: 'fullscreen-warning-title',
-          describedby: 'fullscreen-warning-desc',
-        }}
-      >
-        <div className="flex items-center gap-3 mb-4">
-          <XCircle className="w-6 h-6 text-yellow-600" />
-          <h2 id="fullscreen-warning-title" className="text-lg font-semibold">
-            Fullscreen Warning
-          </h2>
-        </div>
-        <p id="fullscreen-warning-desc" className="text-base mb-6">
-          {fullscreenPermissionError
-            ? 'Failed to enter fullscreen mode. Please enable fullscreen to continue the assessment.'
-            : `Warning: You have exited fullscreen mode (${fullscreenWarnings}/${MAX_FULLSCREEN_WARNINGS}). Please stay in fullscreen to continue.`}
-        </p>
-        <div className="flex justify-end">
-          <Button
-            ref={modalButtonRef}
-            onClick={() => {
-              setShowFullscreenWarning(false)
-              if (!fullscreenPermissionError) requestFullscreen()
-            }}
-            className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-4 py-2 rounded-xl hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 flex items-center gap-2"
-          >
-            {fullscreenPermissionError ? 'OK' : 'Re-enter Fullscreen'}
-          </Button>
-        </div>
-      </Modal>
     </div>
   )
 }

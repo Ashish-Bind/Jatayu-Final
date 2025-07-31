@@ -70,39 +70,63 @@ export const AuthProvider = ({ children }) => {
               default:
                 errorMsg = 'Unknown error. Using IP fallback.'
             }
-            console.warn('Geolocation error:', errorMsg)
+            console.warn('Geolocation error:', errorMsg, error)
             setLocationError(errorMsg)
-            getIPLocation().then(resolve).catch(reject)
+            getIPLocation()
+              .then(resolve)
+              .catch((err) => {
+                console.error('IP location fallback failed:', err)
+                resolve({
+                  ip: 'unknown',
+                  city: '',
+                  region: '',
+                  country: '',
+                  latitude: null,
+                  longitude: null,
+                })
+              })
           },
           { timeout: 10000, enableHighAccuracy: true }
         )
       } else {
         console.warn('Geolocation not supported. Using IP fallback.')
         setLocationError('Your browser does not support location services.')
-        getIPLocation().then(resolve).catch(reject)
+        getIPLocation()
+          .then(resolve)
+          .catch((err) => {
+            console.error('IP location fallback failed:', err)
+            resolve({
+              ip: 'unknown',
+              city: '',
+              region: '',
+              country: '',
+              latitude: null,
+              longitude: null,
+            })
+          })
       }
     })
   }
 
   const getIPLocation = async () => {
     try {
-      const response = await fetch('https://ipapi.co/json/')
-      if (!response.ok) throw new Error('Failed to fetch IP location')
+      const response = await fetch('https://ipapi.co/json/', { timeout: 5000 })
+      if (!response.ok) throw new Error(`HTTP error ${response.status}`)
       const data = await response.json()
       const location = {
-        ip: data.ip,
-        city: data.city,
-        region: data.region,
-        country: data.country_name,
-        latitude: data.latitude,
-        longitude: data.longitude,
+        ip: data.ip || 'unknown',
+        city: data.city || '',
+        region: data.region || '',
+        country: data.country_name || '',
+        latitude: data.latitude || null,
+        longitude: data.longitude || null,
       }
       console.log('IP-based location retrieved:', location)
       return location
     } catch (err) {
-      console.warn('Failed to fetch IP location:', err)
+      console.error('Failed to fetch IP location:', err)
       return {
-        ip: 'localhost',
+        ip: 'unknown',
         city: '',
         region: '',
         country: '',
@@ -125,6 +149,10 @@ export const AuthProvider = ({ children }) => {
       })
 
       if (response.ok) {
+        const data = await response.json()
+        if (data.enforce_otp_verification) {
+          return { enforce_otp_verification: true, email: data.email }
+        }
         await checkAuth()
         return true
       }
@@ -145,7 +173,6 @@ export const AuthProvider = ({ children }) => {
       })
 
       if (response.ok) {
-        // Fetch the latest user data from /check to ensure profile_img is included
         await checkAuth()
         return true
       }
@@ -159,11 +186,38 @@ export const AuthProvider = ({ children }) => {
 
   const recruiterLogin = async (email, password) => {
     try {
+      const location = await getLocation()
+      console.log('Sending location data to backend:', location)
+
       const response = await fetch(`${baseUrl}/recruiter/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, location }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.enforce_otp_verification) {
+          return { enforce_otp_verification: true, email: data.email }
+        }
+        await checkAuth()
+        return true
+      }
+      const data = await response.json()
+      throw new Error(data?.error || 'Login failed')
+    } catch (error) {
+      throw new Error(error.message)
+    }
+  }
+
+  const verifyRecruiterOtp = async (email, otp) => {
+    try {
+      const response = await fetch(`${baseUrl}/recruiter/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, otp }),
       })
 
       if (response.ok) {
@@ -171,7 +225,7 @@ export const AuthProvider = ({ children }) => {
         return true
       }
       const data = await response.json()
-      throw new Error(data?.error || 'Login failed')
+      throw new Error(data?.error || 'OTP verification failed')
     } catch (error) {
       throw new Error(error.message)
     }
@@ -233,6 +287,7 @@ export const AuthProvider = ({ children }) => {
     locationError,
     recruiterLogin,
     superadminlogin,
+    verifyRecruiterOtp,
   }
 
   return (

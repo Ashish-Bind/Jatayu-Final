@@ -349,7 +349,7 @@ def store_violation(attempt_id):
         violation_type = request.form['violation_type'].lower()
         
         # Validate violation type
-        valid_violation_types = ['no_face', 'multiple_faces', 'mobile_phone']
+        valid_violation_types = ['gaze_away','no_face', 'multiple_faces', 'mobile_phone']
         if violation_type not in valid_violation_types:
             logger.error(f"Invalid violation type {violation_type} for attempt_id={attempt_id}")
             return jsonify({'error': 'Invalid violation type'}), 400

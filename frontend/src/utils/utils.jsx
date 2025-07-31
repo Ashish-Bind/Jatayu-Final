@@ -4,9 +4,8 @@ import html2canvas from 'html2canvas'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
-// export const baseUrl =
-//   'https://quizzer-backend-flask-72964026119.asia-southeast1.run.app/api'
 export const baseUrl =
+  import.meta.env.VITE_API_BASE_URL ||
   'https://quizzer-backend-flask-72964026119.asia-southeast1.run.app/api'
 
 export function capitalizeFirstLetter(str) {
@@ -130,22 +129,101 @@ export const renderContent = (content) => {
   })
 }
 
-export const downloadAsPDF = (elementId, fileName) => {
-  const input = document.getElementById(elementId)
-  if (!input) {
-    console.error(`Element with ID ${elementId} not found`)
+export const downloadAsPDF = async (elementRef, fileName) => {
+  if (!elementRef || !elementRef.current) {
+    console.error('Element reference not provided or is null.')
     return
   }
 
-  html2canvas(input).then((canvas) => {
-    const imgData = canvas.toDataURL('image/png')
-    const pdf = new jsPDF()
-    const imgProps = pdf.getImageProperties(imgData)
-    const pdfWidth = pdf.internal.pageSize.getWidth()
-    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
+  const input = elementRef.current
+
+  try {
+    // Preload all images in the element to ensure they load correctly
+    const images = input.getElementsByTagName('img')
+    const imagePromises = Array.from(images).map((img) => {
+      return new Promise((resolve, reject) => {
+        if (img.complete && img.naturalHeight !== 0) {
+          resolve(img.src)
+        } else {
+          img.crossOrigin = 'anonymous' // Set crossOrigin for CORS
+          img.onload = () => resolve(img.src)
+          img.onerror = () =>
+            reject(new Error(`Failed to load image: ${img.src}`))
+          // Trigger reload if image is not loaded
+          if (!img.complete) {
+            img.src = img.src
+          }
+        }
+      })
+    })
+
+    // Wait for all images to load
+    await Promise.allSettled(imagePromises).then((results) => {
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.warn(
+            `Image ${images[index].src} failed to load: ${result.reason}`
+          )
+        }
+      })
+    })
+
+    // Capture the visible content of the element
+    const canvas = await html2canvas(input, {
+      useCORS: true, // Enable CORS for external resources
+      scale: 2, // Higher resolution for better quality
+      windowWidth: document.documentElement.offsetWidth, // Match viewport width
+      windowHeight: document.documentElement.offsetHeight, // Match viewport height
+      scrollX: 0, // Reset scroll position
+      scrollY: 0, // Reset scroll position
+      backgroundColor: '#ffffff', // Ensure white background
+      logging: true, // Enable logging for debugging
+    })
+
+    const imgData = canvas.toDataURL('image/jpeg', 1.0) // Use JPEG for smaller file size
+    const pdf = new jsPDF('p', 'mm', 'a4') // Portrait, millimeters, A4 size
+
+    const imgWidth = 210 // A4 width in mm
+    const pageHeight = pdf.internal.pageSize.height // A4 height in mm
+    const imgHeight = (canvas.height * imgWidth) / canvas.width // Scale height proportionally
+    let heightLeft = imgHeight
+    let position = 0
+
+    // Add first page
+    pdf.addImage(
+      imgData,
+      'JPEG',
+      0,
+      position,
+      imgWidth,
+      imgHeight,
+      undefined,
+      'FAST'
+    )
+    heightLeft -= pageHeight
+
+    // Add additional pages if content exceeds one page
+    while (heightLeft > 0) {
+      position = heightLeft - imgHeight // Adjust position for next page
+      pdf.addPage()
+      pdf.addImage(
+        imgData,
+        'JPEG',
+        0,
+        position,
+        imgWidth,
+        imgHeight,
+        undefined,
+        'FAST'
+      )
+      heightLeft -= pageHeight
+    }
+
     pdf.save(`${fileName}.pdf`)
-  })
+  } catch (error) {
+    console.error('Error generating PDF:', error)
+    // Optionally, show a user-friendly message
+  }
 }
 
 export const requestFullscreen = async () => {
@@ -483,11 +561,6 @@ export const handleAnswerSubmit = (
           type: 'bot',
           content: (
             <div className="flex items-center gap-2 text-lg">
-              {data.feedback.includes('✅') ? (
-                <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-300" />
-              ) : (
-                <XCircle className="w-4 h-4 text-red-600 dark:text-red-300" />
-              )}
               {renderContent(data.feedback)}
             </div>
           ),

@@ -70,7 +70,7 @@ const RecruiterDashboard = () => {
   const [activeTab, setActiveTab] = useState('create')
 
   useEffect(() => {
-    if (!user || user.role !== 'recruiter') {
+    if (!user || user.role !== 'recruiter' || user.requires_otp_verification) {
       navigate('/recruiter/login')
       return
     }

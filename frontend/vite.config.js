@@ -7,12 +7,5 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
-    proxy: {
-      // Proxy all API calls starting with /api or /candidate to Flask
-      '/candidate': 'http://localhost:5000',
-      '/recruiter': 'http://localhost:5000',
-      '/admin': 'http://localhost:5000',
-      '/api': 'http://localhost:5000',
-    },
   },
 })

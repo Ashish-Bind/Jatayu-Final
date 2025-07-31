@@ -42,7 +42,13 @@ const AssessmentMessages = ({
                   {msg.options.map((option, optIndex) => (
                     <label
                       key={`option-${msg.mcqId}-${optIndex}`}
-                      className="flex items-center p-3 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-700/30 transition-colors cursor-pointer"
+                      className={`flex items-center p-3 rounded-lg transition-colors cursor-pointer
+                        ${
+                          userAnswer ===
+                          (option.value || (optIndex + 1).toString())
+                            ? 'bg-indigo-600 dark:bg-indigo-700 text-white'
+                            : 'hover:bg-indigo-50 dark:hover:bg-indigo-700/30'
+                        }`}
                     >
                       <input
                         type="radio"
@@ -57,10 +63,12 @@ const AssessmentMessages = ({
                             option.value || (optIndex + 1).toString()
                           )
                         }
-                        className="w-5 h-5 text-indigo-600 dark:text-indigo-300 focus:ring-indigo-600 border-gray-300 dark:border-gray-600 hidden peer"
+                        className="absolute opacity-0 w-0 h-0" // Hide radio button
                         disabled={isLoading}
                       />
-                      <span className="ml-3 text-lg text-gray-800 dark:text-gray-100 peer-checked:border-indigo-600">
+                      <span className="text-lg">
+                        {optIndex + 1}
+                        {'. '}
                         {option.label || `${optIndex + 1}. ${option}`}
                       </span>
                     </label>

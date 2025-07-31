@@ -14,6 +14,7 @@ class Recruiter(db.Model):
     subscription_start_date = db.Column(db.DateTime, nullable=True)
     subscription_end_date = db.Column(db.DateTime, nullable=True)
     logo = db.Column(db.String(255), nullable=True)
+    requires_otp_verification = db.Column(db.Boolean, default=False) 
 
     user = db.relationship('User', backref=db.backref('recruiter', uselist=False))
     subscription_plan = db.relationship('SubscriptionPlan', backref='recruiters')

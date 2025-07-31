@@ -605,22 +605,13 @@ const Home = () => {
           >
             <motion.div variants={itemVariants}>
               <Link
-                to="/recruiter/login"
+                to="mailto:zaenko@gmail.com?subject=Signup%20for%20AI%20Quiz&body=Hello%20Admin%2C%0AI%20need%20help%20with..."
                 className="bg-white text-indigo-600 px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:bg-gray-100 transition-all duration-300 shadow-lg hover:shadow-xl"
                 variants={buttonVariants}
                 whilehover="hover"
               >
-                Request Demo <ChevronRight className="w-5 h-5" />
-              </Link>
-            </motion.div>
-            <motion.div variants={itemVariants}>
-              <Link
-                to="/candidate/signup"
-                className="bg-gradient-to-r from-indigo-800 to-purple-800 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-900 hover:to-purple-900 transition-all duration-300 shadow-lg hover:shadow-xl"
-                variants={buttonVariants}
-                whilehover="hover"
-              >
-                Try for Free <ArrowRight className="w-5 h-5" />
+                Contact Admin
+                <ChevronRight className="w-5 h-5" />
               </Link>
             </motion.div>
           </motion.div>

@@ -547,17 +547,14 @@ def update_profile(user_id):
 
             # Upload new resume to GCS
             resume_file.seek(0)
-            resume_filename = f"uploads/resumes/{candidate.candidate_id}_{resume_file.filename}"
+            resume_filename = f"resumes/{candidate.candidate_id}_{resume_file.filename}"
             resume_url = upload_to_gcs(resume_file, resume_filename, content_type='application/pdf')
             candidate.resume = resume_filename
         elif candidate.resume:
             try:
                 storage_client = storage.Client()
                 bucket = storage_client.bucket('gen-ai-quiz')
-                gcs_paths = [
-                    f"uploads/{candidate.resume}" if not candidate.resume.startswith('uploads/') else candidate.resume,
-                    candidate.resume
-                ]
+                gcs_paths = [f"uploads/{candidate.resume}"]
                 blob = None
                 gcs_resume_path = None
 

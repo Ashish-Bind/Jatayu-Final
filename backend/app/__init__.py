@@ -83,6 +83,9 @@ def handle_validation_error(e):
 def create_app():
     load_dotenv()
     app = Flask(__name__)
+    app.config.from_object('app.config.Config')
+    app.config.update(SESSION_COOKIE_SAMESITE='None', SESSION_COOKIE_SECURE=True)
+    app.secret_key = os.getenv("SECRET_KEY", "dev-secret-key")
 
     @app.before_request
     def log_request():
@@ -97,9 +100,6 @@ def create_app():
         f"completed in {duration}s"
     )
         return response
-    
-    app.config.from_object('app.config.Config')
-    app.secret_key = os.getenv("SECRET_KEY", "dev-secret-key")
 
     # Enable CORS
     CORS(app, supports_credentials=True, origins=["http://localhost:5173","https://frontend-72964026119.asia-southeast1.run.app"])

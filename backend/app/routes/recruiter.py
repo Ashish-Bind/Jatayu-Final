@@ -3,7 +3,8 @@ from string import Template
 from flask import Blueprint, jsonify, request, send_file, session
 import requests
 from app import db, mail
-from app.models.user import User
+from app.models.user import User, PasswordResetToken
+from app.models.login_log import LoginLog
 from app.models.job import JobDescription
 from app.models.skill import Skill
 from app.models.recruiter import Recruiter
@@ -32,6 +33,9 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
+import secrets
+from flask_mail import Message
+from geopy.distance import geodesic
 
 recruiter_api_bp = Blueprint('recruiter_api', __name__, url_prefix='/api/recruiter')
 
@@ -122,13 +126,177 @@ def recruiter_login():
     data = request.json
     email = data.get('email')
     password = data.get('password')
+    location = data.get('location', {})
+    current_ip = request.remote_addr
+    print(f"📡 Received location: {location}")
+    print(f"📡 Current IP address: {current_ip}")
+
     recruiter = User.query.filter_by(email=email).first()
     if recruiter and recruiter.check_password(password) and recruiter.role == 'recruiter':
-        session['user_id'] = recruiter.id
-        session['role'] = 'recruiter'
-        return jsonify({'message': 'Login successful'}), 200
+        # Save login log
+        try:
+            login_log = LoginLog(
+                user_id=recruiter.id,
+                ip_address=current_ip,
+                city=location.get('city', ''),
+                region=location.get('region', ''),
+                country=location.get('country', ''),
+                latitude=location.get('latitude'),
+                longitude=location.get('longitude'),
+                login_time=datetime.utcnow()
+            )
+            db.session.add(login_log)
+            db.session.commit()
+            print(f"✅ Login log saved for user_id={recruiter.id}, ip={current_ip}, lat={location.get('latitude')}, lon={location.get('longitude')}")
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Error saving login log: {e}")
+
+        recruiter_profile = Recruiter.query.filter_by(user_id=recruiter.id).first()
+        if not recruiter_profile:
+            return jsonify({'error': 'Recruiter profile not found'}), 404
+
+        # Check last login for OTP enforcement
+        enforce_otp_verification = False
+        otp_reason = None
+        last_log = (
+            LoginLog.query
+            .filter(LoginLog.user_id == recruiter.id)
+            .order_by(LoginLog.login_time.desc())
+            .offset(1)
+            .first()
+        )
+        print(f"📖 Last login found: log_id={last_log.log_id if last_log else None}, IP={last_log.ip_address if last_log else None}, Lat={last_log.latitude if last_log else None}, Lon={last_log.longitude if last_log else None}")
+
+        if (
+            last_log and
+            last_log.latitude is not None and last_log.longitude is not None and
+            location.get('latitude') is not None and location.get('longitude') is not None
+        ):
+            prev_coords = (last_log.latitude, last_log.longitude)
+            current_coords = (location['latitude'], location['longitude'])
+            try:
+                distance_km = geodesic(prev_coords, current_coords).km
+                print(f"📏 Distance from last login: {distance_km:.2f} km")
+                if distance_km > 500:
+                    enforce_otp_verification = True
+                    recruiter_profile.requires_otp_verification = True
+                    otp_reason = f"New login location detected (>500km from previous login)"
+                    print("⚠️ Location changed significantly (>500km). Enforcing OTP verification.")
+            except Exception as e:
+                print(f"❌ Error calculating distance: {e}")
+                enforce_otp_verification = True
+                recruiter_profile.requires_otp_verification = True
+                otp_reason = "New login location detected (location calculation failed)"
+        elif last_log and last_log.ip_address != current_ip:
+            print(f"⚠️ IP changed: {last_log.ip_address} -> {current_ip}. Enforcing OTP verification.")
+            enforce_otp_verification = True
+            recruiter_profile.requires_otp_verification = True
+            otp_reason = "New IP address detected"
+        elif not last_log:
+            print("⚠️ First login detected. Enforcing OTP verification.")
+            enforce_otp_verification = True
+            recruiter_profile.requires_otp_verification = True
+            otp_reason = "First login detected"
+        else:
+            print("✅ No significant location/IP change detected.")
+
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(f"❌ Error updating recruiter requires_otp_verification: {e}")
+            return jsonify({'error': 'Failed to process login'}), 500
+
+        if recruiter_profile.requires_otp_verification:
+            # Generate and send OTP
+            otp = secrets.token_hex(3).upper()  # 6-digit hex OTP
+            otp_token = PasswordResetToken(
+                user_id=recruiter.id,
+                token=otp,
+                created_at=datetime.utcnow(),
+                expires_at=datetime.utcnow() + timedelta(minutes=10)
+            )
+            db.session.add(otp_token)
+            db.session.commit()
+            msg = Message(
+                subject="Recruiter Login OTP Verification",
+                sender=os.getenv('MAIL_DEFAULT_SENDER'),
+                recipients=[recruiter.email],
+                body=f"""
+                Hello {recruiter.name},
+
+                A login attempt from a new location or IP was detected. Your OTP is: {otp}
+                This OTP will expire in 10 minutes. If you did not initiate this login, please secure your account.
+
+                Best,
+                Quizzer
+                """
+            )
+            try:
+                mail.send(msg)
+                print(f"📧 OTP sent to {recruiter.email}")
+                # Store temporary session state for OTP verification
+                session['pending_otp_user_id'] = recruiter.id
+                session['pending_otp_role'] = 'recruiter'
+                session['enforce_otp_verification'] = True
+                return jsonify({
+                    'message': 'OTP required for login',
+                    'enforce_otp_verification': True,
+                    'email': recruiter.email,
+                    'otp_reason': otp_reason
+                }), 200
+            except Exception as e:
+                db.session.delete(otp_token)
+                db.session.commit()
+                print(f"❌ Error sending OTP: {e}")
+                return jsonify({'error': 'Failed to send OTP'}), 500
+        else:
+            # Set full session only if OTP is not required
+            session['user_id'] = recruiter.id
+            session['role'] = 'recruiter'
+            session['enforce_otp_verification'] = False
+            return jsonify({'message': 'Login successful'}), 200
     else:
         return jsonify({'error': 'Invalid email or password'}), 401
+
+# BEGIN NEW CODE: OTP verification endpoint for recruiters
+@recruiter_api_bp.route('/verify-otp', methods=['POST'])
+def verify_otp():
+    data = request.json
+    otp = data.get('otp')
+    email = data.get('email')
+    user = User.query.filter_by(email=email).first()
+    if not user or user.role != 'recruiter':
+        return jsonify({'error': 'Invalid user'}), 400
+    otp_token = PasswordResetToken.query.filter_by(
+        user_id=user.id,
+        token=otp
+    ).first()
+    if not otp_token:
+        return jsonify({'error': 'Invalid OTP'}), 400
+    if otp_token.is_expired():
+        db.session.delete(otp_token)
+        db.session.commit()
+        return jsonify({'error': 'OTP has expired'}), 400
+    recruiter = Recruiter.query.filter_by(user_id=user.id).first()
+    if not recruiter:
+        return jsonify({'error': 'Recruiter profile not found'}), 404
+    # Verify temporary session
+    if session.get('pending_otp_user_id') != user.id or session.get('pending_otp_role') != 'recruiter':
+        return jsonify({'error': 'Invalid session for OTP verification'}), 401
+    # Clear OTP requirement and token
+    recruiter.requires_otp_verification = False
+    db.session.delete(otp_token)
+    db.session.commit()
+    # Promote temporary session to full session
+    session['user_id'] = user.id
+    session['role'] = 'recruiter'
+    session['enforce_otp_verification'] = False
+    # Clear temporary session variables
+    session.pop('pending_otp_user_id', None)
+    session.pop('pending_otp_role', None)
+    return jsonify({'message': 'OTP verified successfully'}), 200
 
 @recruiter_api_bp.route('/degrees', methods=['GET'])
 def get_degrees():
@@ -137,6 +305,7 @@ def get_degrees():
         {'degree_id': degree.degree_id, 'degree_name': degree.degree_name}
         for degree in degrees
     ])
+
 
 @recruiter_api_bp.route('/branches', methods=['GET'])
 def get_branches():

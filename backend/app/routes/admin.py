@@ -20,6 +20,7 @@ from datetime import date
 from calendar import monthrange
 from app.utils.gcs_upload import upload_to_gcs, delete_from_gcs
 import secrets
+import pyotp  # Import pyotp
 
 admin_api_bp = Blueprint('admin_api', __name__, url_prefix='/api/superadmin')
 
@@ -46,9 +47,49 @@ def superadmin_login():
     if not superadmin or not superadmin.check_password(password):
         return jsonify({'error': 'Invalid credentials'}), 401
 
+    if superadmin.mfa_enabled:
+        # MFA is already enabled, prompt for code
+        return jsonify({'mfa_required': True}), 200
+    else:
+        # New user or MFA not set up, generate a secret and QR code URI
+        if not superadmin.otp_secret:
+            superadmin.otp_secret = pyotp.random_base32()
+            db.session.commit()
+            
+        provisioning_uri = pyotp.totp.TOTP(superadmin.otp_secret).provisioning_uri(
+            name=superadmin.email, issuer_name="QuizzerApp"
+        )
+        return jsonify({
+            'mfa_setup_required': True,
+            'provisioning_uri': provisioning_uri
+        }), 200
+
+@admin_api_bp.route('/login/verify', methods=['POST'])
+def verify_superadmin_2fa():
+    data = request.get_json()
+    email = data.get('email')
+    otp_code = data.get('otp')
+
+    if not email or not otp_code:
+        return jsonify({'error': 'Email and OTP are required'}), 400
+
+    superadmin = Superadmin.query.filter_by(email=email).first()
+    if not superadmin or not superadmin.otp_secret:
+        return jsonify({'error': 'Invalid request or user not found'}), 401
+    
+    totp = pyotp.TOTP(superadmin.otp_secret)
+    if not totp.verify(otp_code):
+        return jsonify({'error': 'Invalid OTP code'}), 401
+
+    # OTP is valid, complete the login
+    if not superadmin.mfa_enabled:
+        superadmin.mfa_enabled = True
+        db.session.commit()
+
     session['user_id'] = superadmin.id
     session['role'] = 'superadmin'
     return jsonify({'message': 'Login successful', 'role': 'superadmin'}), 200
+
 
 @admin_api_bp.route('/clients', methods=['GET'])
 def get_clients():

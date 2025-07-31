@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useContext, useRef } from 'react'
+import React, {
+  useState,
+  useEffect,
+  useContext,
+  useRef,
+  useCallback,
+} from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Modal from 'react-modal'
 import { useAuth } from './context/AuthContext'
@@ -29,6 +35,7 @@ import * as cocoSsd from '@tensorflow-models/coco-ssd'
 import '@tensorflow/tfjs'
 import * as tf from '@tensorflow/tfjs'
 import Webcam from 'react-webcam'
+import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision'
 
 // Bind modal to your appElement (for accessibility)
 Modal.setAppElement('#root')
@@ -62,6 +69,7 @@ const checkBrowserCompatibility = async () => {
   const compatibility = {
     webgl: false,
     tensorflow: false,
+    mediapipe: false,
     camera: false,
     libraries: false,
     ram: false,
@@ -74,12 +82,22 @@ const checkBrowserCompatibility = async () => {
     canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
   compatibility.webgl = !!gl
 
-  // Check TensorFlow.js
+  // Check TensorFlow.js (for COCO-SSD)
   try {
     await tf.ready()
     compatibility.tensorflow = true
   } catch (error) {
     console.error('TensorFlow.js check failed:', error)
+  }
+
+  // Check MediaPipe (gaze model)
+  try {
+    const vision = await FilesetResolver.forVisionTasks(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
+    )
+    compatibility.mediapipe = !!vision
+  } catch (error) {
+    console.error('MediaPipe check failed:', error)
   }
 
   // Check camera availability
@@ -94,7 +112,15 @@ const checkBrowserCompatibility = async () => {
 
   // Check required libraries
   try {
-    compatibility.libraries = !!(React && cocoSsd && Webcam && Modal && format)
+    compatibility.libraries = !!(
+      React &&
+      cocoSsd &&
+      Webcam &&
+      Modal &&
+      format &&
+      FaceLandmarker &&
+      FilesetResolver
+    )
   } catch (error) {
     console.error('Library check failed:', error)
   }
@@ -106,7 +132,6 @@ const checkBrowserCompatibility = async () => {
       const deviceMemoryGB = navigator.deviceMemory || 0
       compatibility.ram = deviceMemoryGB * 1024 >= minRamMB
     } else {
-      // Fallback: assume sufficient RAM if at least 4 CPU threads
       const cpuThreads = navigator.hardwareConcurrency || 1
       compatibility.ram = cpuThreads >= 4
     }
@@ -118,13 +143,12 @@ const checkBrowserCompatibility = async () => {
   try {
     if ('storage' in navigator && 'estimate' in navigator.storage) {
       const storageEstimate = await navigator.storage.estimate()
-      const minStorageMB = 500 // Minimum 500MB storage required
+      const minStorageMB = 500
       const availableStorageMB = Math.floor(
         storageEstimate.quota / (1024 * 1024)
       )
       compatibility.storage = availableStorageMB >= minStorageMB
     } else {
-      // Fallback: assume storage is sufficient if API not available
       compatibility.storage = true
     }
   } catch (error) {
@@ -156,12 +180,15 @@ const CandidateDashboard = () => {
   const [modalStep, setModalStep] = useState(1)
   const [webcamError, setWebcamError] = useState('')
   const [webcamStream, setWebcamStream] = useState(null)
-  const [modelLoading, setModelLoading] = useState(false)
-  const [modelLoaded, setModelLoaded] = useState(false)
+  const [cocoSsdModelLoading, setCocoSsdModelLoading] = useState(false)
+  const [cocoSsdModelLoaded, setCocoSsdModelLoaded] = useState(false)
+  const [gazeModelLoading, setGazeModelLoading] = useState(false)
+  const [gazeModelLoaded, setGazeModelLoaded] = useState(false)
   const [cameraVerified, setCameraVerified] = useState(false)
   const [faceVerified, setFaceVerified] = useState(false)
   const [browserCompatibility, setBrowserCompatibility] = useState(null)
   const [compatibilityLoading, setCompatibilityLoading] = useState(false)
+
   const webcamRef = useRef(null)
   const streamRef = useRef(null)
 
@@ -264,7 +291,6 @@ const CandidateDashboard = () => {
       .then((data) => {
         if (data.message) {
           setSuccessMessage(data.message)
-          // Refresh assessments
           fetch(`${baseUrl}/candidate/eligible-assessments/${user.id}`, {
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
@@ -319,11 +345,14 @@ const CandidateDashboard = () => {
     setSelectedAssessment(assessment)
     setErrorMessage('')
     setSuccessMessage('')
+    setIneligibleMessage('')
     setModalStep(1)
     setWebcamError('')
     setWebcamStream(null)
-    setModelLoading(false)
-    setModelLoaded(false)
+    setCocoSsdModelLoading(false)
+    setCocoSsdModelLoaded(false)
+    setGazeModelLoading(false)
+    setGazeModelLoaded(false)
     setCameraVerified(false)
     setFaceVerified(false)
     setBrowserCompatibility(null)
@@ -336,8 +365,10 @@ const CandidateDashboard = () => {
   }
 
   const handleNextStep = async () => {
+    setErrorMessage('')
+
+    // Step 2: Request camera permission
     if (modalStep === 2) {
-      // Request camera permission
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: true,
@@ -351,30 +382,60 @@ const CandidateDashboard = () => {
         setWebcamError(
           'Webcam access denied. Please allow webcam access to continue.'
         )
+        setErrorMessage('Webcam access denied. Please allow webcam access.')
       }
-    } else if (modalStep === 3) {
-      // Load TensorFlow model
-      setModelLoading(true)
+    }
+    // Step 3: Load COCO-SSD Model
+    else if (modalStep === 3) {
+      setCocoSsdModelLoading(true)
       try {
-        const loadedModel = await cocoSsd.load()
-        setModelLoaded(true)
-        setModelLoading(false)
+        await cocoSsd.load()
+        setCocoSsdModelLoaded(true)
+        setCocoSsdModelLoading(false)
         setModalStep(modalStep + 1)
       } catch (error) {
-        setModelLoading(false)
+        setCocoSsdModelLoading(false)
         setErrorMessage('Failed to load object detection model.')
       }
-    } else if (modalStep === 4) {
-      // Camera verification
+    }
+    // Step 4: Load Gaze Model (MediaPipe Face Landmarker)
+    else if (modalStep === 4) {
+      setGazeModelLoading(true)
+      try {
+        const vision = await FilesetResolver.forVisionTasks(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
+        )
+        await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath:
+              'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO',
+          outputFaceBlendshapes: false,
+          numFaces: 1,
+        })
+        setGazeModelLoaded(true)
+        setGazeModelLoading(false)
+        setModalStep(modalStep + 1)
+      } catch (error) {
+        setGazeModelLoading(false)
+        setErrorMessage('Failed to load gaze detection model.')
+      }
+    }
+    // Step 5: Camera verification
+    else if (modalStep === 5) {
       if (webcamStream) {
         setCameraVerified(true)
         setModalStep(modalStep + 1)
       } else {
         setWebcamError('No webcam feed detected. Please try again.')
+        setErrorMessage('No webcam feed detected.')
       }
-    } else if (modalStep === 5) {
-      // Face verification
-      setFaceVerified(false) // Reset face verification state
+    }
+    // Step 6: Face verification
+    else if (modalStep === 6) {
+      setFaceVerified(false)
       if (webcamRef.current && webcamStream) {
         const imageSrc = webcamRef.current.getScreenshot()
         if (!imageSrc) {
@@ -382,7 +443,7 @@ const CandidateDashboard = () => {
           return
         }
 
-        setCompatibilityLoading(true) // Start loading animation
+        setCompatibilityLoading(true)
         const blob = await fetch(imageSrc).then((r) => r.blob())
         const formData = new FormData()
         formData.append('webcam_image', blob, 'webcam.jpg')
@@ -395,7 +456,7 @@ const CandidateDashboard = () => {
           })
 
           const data = await response.json()
-          setCompatibilityLoading(false) // Stop loading animation
+          setCompatibilityLoading(false)
           if (data.success) {
             setFaceVerified(true)
             setModalStep((prev) => prev + 1)
@@ -404,15 +465,16 @@ const CandidateDashboard = () => {
           }
         } catch (error) {
           console.error('Error during face verification:', error)
-          setCompatibilityLoading(false) // Stop loading animation
+          setCompatibilityLoading(false)
           setErrorMessage(`Face verification failed: ${error.message}`)
         }
       } else {
-        setCompatibilityLoading(false) // Stop loading animation
+        setCompatibilityLoading(false)
         setErrorMessage('No webcam feed available for face verification.')
       }
-    } else if (modalStep === 6) {
-      // Browser compatibility check
+    }
+    // Step 7: Browser compatibility check
+    else if (modalStep === 7) {
       setCompatibilityLoading(true)
       try {
         const compatibility = await checkBrowserCompatibility()
@@ -421,33 +483,52 @@ const CandidateDashboard = () => {
         if (
           compatibility.webgl &&
           compatibility.tensorflow &&
+          compatibility.mediapipe &&
           compatibility.camera &&
           compatibility.libraries &&
           compatibility.ram &&
           compatibility.storage
         ) {
           setModalStep(modalStep + 1)
+          setErrorMessage('')
         } else {
           if (!compatibility.ram || !compatibility.storage) {
             setIsResourceWarningModalOpen(true)
           }
-          setErrorMessage(
-            'Browser compatibility check failed. Please ensure WebGL, TensorFlow.js, camera, required libraries, sufficient RAM, and storage are available.'
-          )
+          let compatErrorMsg =
+            'Browser compatibility check failed. Please ensure all requirements are met: '
+          if (!compatibility.webgl) compatErrorMsg += 'WebGL, '
+          if (!compatibility.tensorflow) compatErrorMsg += 'TensorFlow.js, '
+          if (!compatibility.mediapipe) compatErrorMsg += 'MediaPipe, '
+          if (!compatibility.camera) compatErrorMsg += 'Camera, '
+          if (!compatibility.libraries) compatErrorMsg += 'Libraries, '
+          if (!compatibility.ram) compatErrorMsg += 'Sufficient RAM, '
+          if (!compatibility.storage) compatErrorMsg += 'Sufficient Storage, '
+          setErrorMessage(compatErrorMsg.slice(0, -2) + '.')
         }
       } catch (error) {
         setCompatibilityLoading(false)
         setErrorMessage(`Browser compatibility check failed: ${error.message}`)
       }
-    } else if (modalStep === 7) {
-      // Start assessment
+    }
+    // Step 8: Start Assessment
+    else if (modalStep === 8) {
       if (
         selectedAssessment &&
         cameraVerified &&
-        modelLoaded &&
+        cocoSsdModelLoaded &&
+        gazeModelLoaded &&
         faceVerified &&
-        browserCompatibility?.webgl
+        browserCompatibility?.webgl &&
+        browserCompatibility?.tensorflow &&
+        browserCompatibility?.mediapipe
       ) {
+        if (streamRef.current) {
+          console.log('Stopping webcam stream in CandidateDashboard')
+          streamRef.current.getTracks().forEach((track) => track.stop())
+          streamRef.current = null
+        }
+
         fetch(`${baseUrl}/candidate/start-assessment`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -477,6 +558,10 @@ const CandidateDashboard = () => {
             console.error('Error starting assessment:', error)
             setErrorMessage(`Failed to start the assessment: ${error.message}`)
           })
+      } else {
+        setErrorMessage(
+          'Not all prerequisites are met to start the assessment.'
+        )
       }
     } else {
       setModalStep(modalStep + 1)
@@ -491,10 +576,16 @@ const CandidateDashboard = () => {
         streamRef.current.getTracks().forEach((track) => track.stop())
         setWebcamStream(null)
       }
+      if (modalStep === 4) {
+        setGazeModelLoaded(false)
+      }
       if (modalStep === 5) {
-        setFaceVerified(false)
+        setCocoSsdModelLoaded(false)
       }
       if (modalStep === 6) {
+        setFaceVerified(false)
+      }
+      if (modalStep === 7) {
         setBrowserCompatibility(null)
         setIsResourceWarningModalOpen(false)
       }
@@ -926,10 +1017,11 @@ const CandidateDashboard = () => {
                   {modalStep === 1 && 'Assessment Details'}
                   {modalStep === 2 && 'Camera Permission'}
                   {modalStep === 3 && 'Load Object Detection Model'}
-                  {modalStep === 4 && 'Camera Verification'}
-                  {modalStep === 5 && 'Face Verification'}
-                  {modalStep === 6 && 'Browser Compatibility'}
-                  {modalStep === 7 && 'Start Assessment'}
+                  {modalStep === 4 && 'Load Gaze Detection Model'}
+                  {modalStep === 5 && 'Camera Verification'}
+                  {modalStep === 6 && 'Face Verification'}
+                  {modalStep === 7 && 'Browser Compatibility'}
+                  {modalStep === 8 && 'Start Assessment'}
                 </h2>
               </div>
               <button
@@ -950,12 +1042,12 @@ const CandidateDashboard = () => {
 
             {selectedAssessment && (
               <div id="assessment-modal-desc">
-                {/* Stepper */}
                 <div className="flex items-center justify-between mb-8">
                   {[
                     'Details',
                     'Camera Permission',
-                    'Model Loading',
+                    'AI Model Loading',
+                    'Proctoring Model Loading',
                     'Camera Verification',
                     'Face Verification',
                     'Browser Compatibility',
@@ -986,7 +1078,7 @@ const CandidateDashboard = () => {
                       >
                         {label}
                       </span>
-                      {index < 6 && (
+                      {index < 7 && (
                         <div className="flex-1 h-1 bg-gray-200 dark:bg-gray-700 mx-2">
                           <div
                             className={`h-full ${
@@ -1001,7 +1093,6 @@ const CandidateDashboard = () => {
                   ))}
                 </div>
 
-                {/* Step 1: Job Details and Instructions */}
                 {modalStep === 1 && (
                   <div className="space-y-6 text-base mb-8">
                     <div>
@@ -1101,9 +1192,7 @@ const CandidateDashboard = () => {
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="w-5 h-5 text-indigo-600 dark:text-indigo-300" />
-                          <span>
-                            Do not switch tabs or exit fullscreen mode.
-                          </span>
+                          <span>Do not switch tabs during the assessment.</span>
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="w-5 h-5 text-indigo-600 dark:text-indigo-300" />
@@ -1116,7 +1205,6 @@ const CandidateDashboard = () => {
                   </div>
                 )}
 
-                {/* Step 2: Camera Permission */}
                 {modalStep === 2 && (
                   <div className="space-y-6 text-base mb-8">
                     <p className="text-gray-900 dark:text-gray-100">
@@ -1146,7 +1234,6 @@ const CandidateDashboard = () => {
                   </div>
                 )}
 
-                {/* Step 3: Load TensorFlow Model */}
                 {modalStep === 3 && (
                   <div className="space-y-6 text-base mb-8">
                     <p className="text-gray-900 dark:text-gray-100">
@@ -1159,13 +1246,13 @@ const CandidateDashboard = () => {
                         <span>{errorMessage}</span>
                       </div>
                     )}
-                    {modelLoaded && (
+                    {cocoSsdModelLoaded && (
                       <div className="bg-green-50/80 dark:bg-green-900/20 border border-green-200/50 dark:border-green-700/50 text-green-700 dark:text-green-300 p-4 rounded-xl flex items-center gap-3">
                         <Check className="w-5 h-5" />
-                        <span>Model loaded successfully.</span>
+                        <span>Object detection model loaded successfully.</span>
                       </div>
                     )}
-                    {modelLoading && (
+                    {cocoSsdModelLoading && (
                       <div className="flex items-center gap-3 justify-center">
                         <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
                         <span className="text-gray-700 dark:text-gray-200">
@@ -1176,16 +1263,52 @@ const CandidateDashboard = () => {
                     <Button
                       onClick={handleNextStep}
                       className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
-                      disabled={modelLoading || modelLoaded}
+                      disabled={cocoSsdModelLoading || cocoSsdModelLoaded}
                     >
-                      Load Model
+                      Load AI Model
                       <ArrowRight className="w-5 h-5" />
                     </Button>
                   </div>
                 )}
 
-                {/* Step 4: Camera Verification */}
                 {modalStep === 4 && (
+                  <div className="space-y-6 text-base mb-8">
+                    <p className="text-gray-900 dark:text-gray-100">
+                      The assessment also uses a gaze detection model for
+                      proctoring. Please load this model to proceed.
+                    </p>
+                    {errorMessage && (
+                      <div className="bg-red-50/80 dark:bg-red-900/20 border border-red-200/50 dark:border-red-700/50 text-red-700 dark:text-red-300 p-4 rounded-xl flex items-center gap-3">
+                        <X className="w-5 h-5" />
+                        <span>{errorMessage}</span>
+                      </div>
+                    )}
+                    {gazeModelLoaded && (
+                      <div className="bg-green-50/80 dark:bg-green-900/20 border border-green-200/50 dark:border-green-700/50 text-green-700 dark:text-green-300 p-4 rounded-xl flex items-center gap-3">
+                        <Check className="w-5 h-5" />
+                        <span>Gaze detection model loaded successfully.</span>
+                      </div>
+                    )}
+                    {gazeModelLoading && (
+                      <div className="flex items-center gap-3 justify-center">
+                        <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                        <span className="text-gray-700 dark:text-gray-200">
+                          Loading gaze detection model...
+                        </span>
+                      </div>
+                    )}
+                    <Button
+                      onClick={handleNextStep}
+                      className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+                      disabled={gazeModelLoading || gazeModelLoaded}
+                    >
+                      Load Proctoring Model
+                      <ArrowRight className="w-5 h-5" />
+                    </Button>
+                  </div>
+                )}
+
+                {modalStep === 5 && (
                   <div className="space-y-6 text-base mb-8">
                     <p className="text-gray-900 dark:text-gray-100">
                       Please verify that your webcam is working correctly. You
@@ -1224,8 +1347,7 @@ const CandidateDashboard = () => {
                   </div>
                 )}
 
-                {/* Step 5: Face Verification */}
-                {modalStep === 5 && (
+                {modalStep === 6 && (
                   <div className="space-y-6 text-base mb-8">
                     <p className="text-gray-900 dark:text-gray-100">
                       Please verify your identity using facial recognition.
@@ -1278,13 +1400,12 @@ const CandidateDashboard = () => {
                   </div>
                 )}
 
-                {/* Step 6: Browser Compatibility */}
-                {modalStep === 6 && (
+                {modalStep === 7 && (
                   <div className="space-y-6 text-base mb-8">
                     <p className="text-gray-900 dark:text-gray-100">
                       Verifying browser compatibility for the assessment. This
-                      includes checking for WebGL, TensorFlow.js, camera
-                      availability, required libraries, RAM, and storage.
+                      includes checking for WebGL, TensorFlow.js, MediaPipe,
+                      camera availability, required libraries, RAM, and storage.
                     </p>
                     {errorMessage && (
                       <div className="bg-red-50/80 dark:bg-red-900/20 border border-red-200/50 dark:border-red-700/50 text-red-700 dark:text-red-300 p-4 rounded-xl flex items-center gap-3">
@@ -1310,6 +1431,14 @@ const CandidateDashboard = () => {
                               <X className="w-5 h-5 text-red-700 dark:text-red-300" />
                             )}
                             <span>TensorFlow.js Support</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            {browserCompatibility.mediapipe ? (
+                              <Check className="w-5 h-5" />
+                            ) : (
+                              <X className="w-5 h-5 text-red-700 dark:text-red-300" />
+                            )}
+                            <span>MediaPipe Support</span>
                           </li>
                           <li className="flex items-center gap-2">
                             {browserCompatibility.camera ? (
@@ -1362,6 +1491,7 @@ const CandidateDashboard = () => {
                         (browserCompatibility &&
                           browserCompatibility.webgl &&
                           browserCompatibility.tensorflow &&
+                          browserCompatibility.mediapipe &&
                           browserCompatibility.camera &&
                           browserCompatibility.libraries &&
                           browserCompatibility.ram &&
@@ -1374,8 +1504,7 @@ const CandidateDashboard = () => {
                   </div>
                 )}
 
-                {/* Step 7: Start Assessment */}
-                {modalStep === 7 && (
+                {modalStep === 8 && (
                   <div className="space-y-6 text-base mb-8">
                     <p className="text-gray-900 dark:text-gray-100">
                       All prerequisites are complete. You are ready to start the
@@ -1397,6 +1526,10 @@ const CandidateDashboard = () => {
                         <li className="flex items-center gap-2">
                           <Check className="w-5 h-5" />
                           Object detection model loaded
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="w-5 h-5" />
+                          Gaze detection model loaded
                         </li>
                         <li className="flex items-center gap-2">
                           <Check className="w-5 h-5" />
@@ -1443,25 +1576,30 @@ const CandidateDashboard = () => {
                       className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
                       disabled={
                         (modalStep === 2 && webcamStream) ||
-                        (modalStep === 3 && (modelLoading || modelLoaded)) ||
-                        (modalStep === 4 && !webcamStream) ||
-                        (modalStep === 5 &&
+                        (modalStep === 3 &&
+                          (cocoSsdModelLoading || cocoSsdModelLoaded)) ||
+                        (modalStep === 4 &&
+                          (gazeModelLoading || gazeModelLoaded)) ||
+                        (modalStep === 5 && !webcamStream) ||
+                        (modalStep === 6 &&
                           (!webcamStream ||
                             faceVerified ||
                             compatibilityLoading)) ||
-                        (modalStep === 6 &&
+                        (modalStep === 7 &&
                           (compatibilityLoading ||
                             (browserCompatibility &&
                               browserCompatibility.webgl &&
                               browserCompatibility.tensorflow &&
+                              browserCompatibility.mediapipe &&
                               browserCompatibility.camera &&
                               browserCompatibility.libraries &&
                               browserCompatibility.ram &&
                               browserCompatibility.storage))) ||
-                        (modalStep === 7 &&
+                        (modalStep === 8 &&
                           !(
                             cameraVerified &&
-                            modelLoaded &&
+                            cocoSsdModelLoaded &&
+                            gazeModelLoaded &&
                             faceVerified &&
                             browserCompatibility?.webgl &&
                             browserCompatibility?.ram &&
@@ -1469,7 +1607,7 @@ const CandidateDashboard = () => {
                           ))
                       }
                     >
-                      {modalStep === 7 ? 'Start Assessment' : 'Next'}
+                      {modalStep === 8 ? 'Start Assessment' : 'Next'}
                       <ArrowRight className="w-5 h-5" />
                     </Button>
                   </div>

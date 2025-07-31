@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import ClockLoader from '../components/ClockLoader'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import LinkButton from '../components/LinkButton'
 import Button from '../components/Button'
 import { baseUrl, formatDate } from '../utils/utils'
@@ -29,6 +29,7 @@ const RecruiterOverview = () => {
   })
   const [candidates, setCandidates] = useState([])
   const [error, setError] = useState('')
+  const navigate = useNavigate()
 
   const links = [
     {
@@ -49,7 +50,10 @@ const RecruiterOverview = () => {
   ]
 
   useEffect(() => {
-    if (!user || user.role !== 'recruiter') return
+    if (!user || user.role !== 'recruiter' || user.requires_otp_verification) {
+      navigate('/recruiter/login')
+      return
+    }
 
     // Fetch recruiter profile and subscription details
     fetch(`${baseUrl}/subscriptions/plan/${user.id}`, {
