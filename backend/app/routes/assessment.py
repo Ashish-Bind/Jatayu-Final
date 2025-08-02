@@ -24,6 +24,7 @@ from io import BytesIO
 import timeout_decorator
 import google.api_core.exceptions
 import requests
+import json
 
 assessment_api_bp = Blueprint('assessment_api', __name__, url_prefix='/api/assessment')
 
@@ -39,7 +40,6 @@ WEBCAM_DIR = os.path.join(PROJECT_ROOT, 'webcam_images')
 os.makedirs(WEBCAM_DIR, exist_ok=True)  
 os.makedirs(SNAPSHOT_DIR, exist_ok=True)
 os.makedirs(VIOLATOIN_DIR, exist_ok=True)
-
 
 BAND_ORDER = ["good", "better", "perfect"]
 
@@ -61,8 +61,6 @@ INCORRECT_FEEDBACK = [
     "❌ Missed that one. Correct answer: {answer}",
     "😬 Close, but the answer was: {answer}"
 ]
-
-assessment_states = {}
 
 def load_question_bank(job_id):
     """Load and shuffle questions for a job, organized by skill and difficulty band."""
@@ -120,7 +118,6 @@ def get_base_band(candidate_exp, jd_range):
         logger.error(f"Error in get_base_band for candidate_exp={candidate_exp}, jd_range={jd_range}: {str(e)}")
         raise
 
-
 def compare_images(snapshot_url, profile_url):
     try:
         snapshot_res = requests.get(snapshot_url, timeout=5)
@@ -149,12 +146,35 @@ def save_assessment_state(attempt_id, state):
         if assessment_state:
             assessment_state.state = state
         else:
-            assessment_state = AssessmentState(attempt_id=attempt_id, state=state)
+            assessment_state = AssessmentState(
+                attempt_id=attempt_id,
+                state=state,
+                skill_count=len(state.get('performance_log', {})),
+                expiry_date=datetime.utcnow() + timedelta(hours=24)  # Set expiry to 24 hours from now
+            )
             db.session.add(assessment_state)
         db.session.commit()
     except Exception as e:
         logger.error(f"Error saving assessment state for attempt_id={attempt_id}: {str(e)}")
         db.session.rollback()
+        raise
+
+def get_assessment_state(attempt_id):
+    """Retrieve assessment state from database."""
+    try:
+        assessment_state = AssessmentState.query.get(attempt_id)
+        if not assessment_state:
+            logger.error(f"Assessment state not found for attempt_id={attempt_id}")
+            return None
+        if assessment_state.expiry_date and assessment_state.expiry_date < datetime.utcnow():
+            logger.warning(f"Assessment state expired for attempt_id={attempt_id}")
+            db.session.delete(assessment_state)
+            db.session.commit()
+            return None
+        return assessment_state.state
+    except Exception as e:
+        logger.error(f"Error retrieving assessment state for attempt_id={attempt_id}: {str(e)}")
+        raise
 
 @assessment_api_bp.route('/start/<int:attempt_id>', methods=['POST'])
 def start_assessment_session(attempt_id):
@@ -235,34 +255,30 @@ def start_assessment_session(attempt_id):
             "accuracy_percent": 0.0
         } for skill in jd_priorities}
 
-        assessment_state = AssessmentState.query.get(attempt_id)
-        if assessment_state:
-            assessment_states[attempt_id] = assessment_state.state
-        else:
-            assessment_states[attempt_id] = {
-                'job_id': job.job_id,
-                'question_bank': question_bank,
-                'questions_per_skill': questions_per_skill,
-                'current_band_per_skill': current_band_per_skill,
-                'initial_band_per_skill': initial_band_per_skill,
-                'performance_log': performance_log,
-                'question_count': 0,
-                'total_questions': total_questions,
-                'test_duration': test_duration,
-                'start_time': datetime.utcnow().timestamp(),
-                'asked_questions': [],
-                'job_description': job.job_description or "",
-                'custom_prompt': job.custom_prompt or "",
-                'proctoring_data': {
-                    "snapshots": [],
-                    "tab_switches": 0,
-                    "fullscreen_warnings": 0,
-                    "remarks": [],
-                    "forced_termination": False,
-                    "termination_reason": ""
-                }
+        state = {
+            'job_id': job.job_id,
+            'question_bank': question_bank,
+            'questions_per_skill': questions_per_skill,
+            'current_band_per_skill': current_band_per_skill,
+            'initial_band_per_skill': initial_band_per_skill,
+            'performance_log': performance_log,
+            'question_count': 0,
+            'total_questions': total_questions,
+            'test_duration': test_duration,
+            'start_time': datetime.utcnow().timestamp(),
+            'asked_questions': [],
+            'job_description': job.job_description or "",
+            'custom_prompt': job.custom_prompt or "",
+            'proctoring_data': {
+                "snapshots": [],
+                "tab_switches": 0,
+                "fullscreen_warnings": 0,
+                "remarks": [],
+                "forced_termination": False,
+                "termination_reason": ""
             }
-            save_assessment_state(attempt_id, assessment_states[attempt_id])
+        }
+        save_assessment_state(attempt_id, state)
 
         return jsonify({
             'total_questions': total_questions,
@@ -294,16 +310,17 @@ def capture_snapshot(attempt_id):
             logger.error(f"Invalid snapshot file for attempt_id={attempt_id}")
             return jsonify({'error': 'Invalid snapshot file'}), 400
 
+        state = get_assessment_state(attempt_id)
+        if not state:
+            logger.error(f"Assessment session not found for attempt_id={attempt_id}")
+            return jsonify({'error': 'Assessment session not found'}), 404
+
         timestamp = datetime.utcnow().strftime('%Y%m%dT%H%M%S')
         snapshot_filename = f"attempt{attempt_id}_{timestamp}.jpg"
         snapshot_path = f'snapshots/{snapshot_filename}'
         upload_to_gcs(snapshot_file, snapshot_path, 'image/jpeg')
 
-        if attempt_id not in assessment_states:
-            logger.error(f"Assessment session not found for attempt_id={attempt_id}")
-            return jsonify({'error': 'Assessment session not found'}), 404
-
-        proctoring_data = assessment_states[attempt_id].get('proctoring_data', {
+        proctoring_data = state.get('proctoring_data', {
             "snapshots": [],
             "tab_switches": 0,
             "fullscreen_warnings": 0,
@@ -317,8 +334,8 @@ def capture_snapshot(attempt_id):
         }
         proctoring_data["snapshots"].append(snapshot_entry)
         proctoring_data["remarks"].append(f"Snapshot captured at | {snapshot_entry['timestamp']} | {snapshot_entry['path']}")
-        assessment_states[attempt_id]['proctoring_data'] = proctoring_data
-        save_assessment_state(attempt_id, assessment_states[attempt_id])
+        state['proctoring_data'] = proctoring_data
+        save_assessment_state(attempt_id, state)
         logger.debug(f"Updated proctoring_data for attempt_id={attempt_id}: {proctoring_data}")
 
         return jsonify({'message': 'Snapshot captured successfully'}), 200
@@ -330,7 +347,6 @@ def capture_snapshot(attempt_id):
 def store_violation(attempt_id):
     """Store a proctoring violation with snapshot in the database."""
     try:
-        # Validate assessment attempt
         attempt = AssessmentAttempt.query.get(attempt_id)
         if not attempt:
             logger.error(f"AssessmentAttempt not found for attempt_id={attempt_id}")
@@ -340,7 +356,6 @@ def store_violation(attempt_id):
             logger.error(f"Assessment not in progress for attempt_id={attempt_id}")
             return jsonify({'error': 'Assessment not in progress'}), 400
 
-        # Validate request data
         if 'snapshot' not in request.files or 'violation_type' not in request.form:
             logger.error(f"Missing snapshot or violation_type for attempt_id={attempt_id}")
             return jsonify({'error': 'Missing snapshot or violation type'}), 400
@@ -348,7 +363,6 @@ def store_violation(attempt_id):
         snapshot_file = request.files['snapshot']
         violation_type = request.form['violation_type'].lower()
         
-        # Validate violation type
         valid_violation_types = ['gaze_away','no_face', 'multiple_faces', 'mobile_phone']
         if violation_type not in valid_violation_types:
             logger.error(f"Invalid violation type {violation_type} for attempt_id={attempt_id}")
@@ -358,13 +372,11 @@ def store_violation(attempt_id):
             logger.error(f"Invalid snapshot file for attempt_id={attempt_id}")
             return jsonify({'error': 'Invalid snapshot file'}), 400
 
-        # Save snapshot
         timestamp = datetime.utcnow().strftime('%Y%m%dT%H%M%S')
         snapshot_filename = f"violation_attempt{attempt_id}_{timestamp}.jpg"
         snapshot_path = f'violations/{snapshot_filename}'
         upload_to_gcs(snapshot_file, snapshot_path, 'image/jpeg')
 
-        # Store violation in database
         violation = ProctoringViolation(
             attempt_id=attempt_id,
             snapshot_path=snapshot_path,
@@ -380,7 +392,6 @@ def store_violation(attempt_id):
             'violation_id': violation.violation_id,
             'snapshot_path': violation.snapshot_path
         }), 201
-
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error storing violation for attempt_id={attempt_id}: {str(e)}")
@@ -390,11 +401,11 @@ def store_violation(attempt_id):
 def get_next_question(attempt_id):
     """Retrieve the next question for the assessment."""
     try:
-        if attempt_id not in assessment_states:
+        state = get_assessment_state(attempt_id)
+        if not state:
             logger.error(f"Assessment session not found for attempt_id={attempt_id}")
             return jsonify({'error': 'Assessment session not found'}), 404
 
-        state = assessment_states[attempt_id]
         question_count = state['question_count']
         total_questions = state['total_questions']
         test_duration = state['test_duration']
@@ -403,7 +414,7 @@ def get_next_question(attempt_id):
         job_id = state['job_id']
         job_description = state.get('job_description', "")
         custom_prompt = state.get('custom_prompt', "")
-        asked_questions = state['asked_questions']  # Full question data
+        asked_questions = state['asked_questions']
 
         elapsed_time = datetime.utcnow().timestamp() - start_time
         if question_count >= total_questions or elapsed_time >= test_duration:
@@ -431,15 +442,15 @@ def get_next_question(attempt_id):
             })
 
             proctoring_data.update({
-            "tab_switches": proctoring_data_in.get("tab_switches", proctoring_data["tab_switches"]),
-            "fullscreen_warnings": proctoring_data_in.get("fullscreen_warnings", proctoring_data["fullscreen_warnings"]),
-            "remarks": proctoring_data.get("remarks", []) + proctoring_data_in.get("remarks", []),
-            "forced_termination": proctoring_data_in.get("forced_termination", proctoring_data["forced_termination"]),
-            "termination_reason": proctoring_data_in.get("termination_reason", proctoring_data["termination_reason"])
+                "tab_switches": proctoring_data_in.get("tab_switches", proctoring_data["tab_switches"]),
+                "fullscreen_warnings": proctoring_data_in.get("fullscreen_warnings", proctoring_data["fullscreen_warnings"]),
+                "remarks": proctoring_data.get("remarks", []) + proctoring_data_in.get("remarks", []),
+                "forced_termination": proctoring_data_in.get("forced_termination", proctoring_data["forced_termination"]),
+                "termination_reason": proctoring_data_in.get("termination_reason", proctoring_data["termination_reason"])
             })
 
             if candidate.profile_picture:
-                profile_image_path =f'https://storage.googleapis.com/gen-ai-quiz/uploads/{candidate.profile_picture}'
+                profile_image_path = f'https://storage.googleapis.com/gen-ai-quiz/uploads/{candidate.profile_picture}'
                 for snapshot in proctoring_data["snapshots"]:
                     snapshot_path = f'https://storage.googleapis.com/gen-ai-quiz/uploads/{snapshot["path"]}'
                     is_match, remark = compare_images(snapshot_path, profile_image_path)
@@ -454,8 +465,11 @@ def get_next_question(attempt_id):
             attempt.end_time = datetime.utcnow()
             attempt.status = 'completed'
             db.session.commit()
-            save_assessment_state(attempt_id, state)
-            del assessment_states[attempt_id]
+            # Delete state after completion
+            assessment_state = AssessmentState.query.get(attempt_id)
+            if assessment_state:
+                db.session.delete(assessment_state)
+                db.session.commit()
 
             return jsonify({
                 'message': 'Assessment completed',
@@ -530,11 +544,11 @@ def get_next_question(attempt_id):
 def submit_answer(attempt_id):
     """Submit an answer and update performance log."""
     try:
-        if attempt_id not in assessment_states:
+        state = get_assessment_state(attempt_id)
+        if not state:
             logger.error(f"Assessment session not found for attempt_id={attempt_id}")
             return jsonify({'error': 'Assessment session not found'}), 404
 
-        state = assessment_states[attempt_id]
         data = request.get_json()
         skill = data.get('skill')
         user_input = data.get('answer')
@@ -595,11 +609,11 @@ def submit_answer(attempt_id):
 def end_assessment(attempt_id):
     """End the assessment, process proctoring data, and save results."""
     try:
-        if attempt_id not in assessment_states:
+        state = get_assessment_state(attempt_id)
+        if not state:
             logger.error(f"Assessment session not found for attempt_id={attempt_id}")
             return jsonify({'error': 'Assessment session not found'}), 404
 
-        state = assessment_states[attempt_id]
         data = request.get_json()
         proctoring_data_in = data.get('proctoring_data', {})
         logger.debug(f"Received proctoring_data for attempt_id={attempt_id}: {proctoring_data_in}")
@@ -627,7 +641,7 @@ def end_assessment(attempt_id):
 
         candidate = Candidate.query.get(attempt.candidate_id)
         if candidate.profile_picture:
-            profile_image_path =f'https://storage.googleapis.com/gen-ai-quiz/uploads/{candidate.profile_picture}'
+            profile_image_path = f'https://storage.googleapis.com/gen-ai-quiz/uploads/{candidate.profile_picture}'
             for snapshot in proctoring_data["snapshots"]:
                 snapshot_path = f'https://storage.googleapis.com/gen-ai-quiz/uploads/{snapshot["path"]}'
                 is_match, remark = compare_images(snapshot_path, profile_image_path)
@@ -648,8 +662,11 @@ def end_assessment(attempt_id):
         attempt.end_time = datetime.utcnow()
         attempt.status = 'completed'
         db.session.commit()
-        save_assessment_state(attempt_id, state)
-        del assessment_states[attempt_id]
+        # Delete state after completion
+        assessment_state = AssessmentState.query.get(attempt_id)
+        if assessment_state:
+            db.session.delete(assessment_state)
+            db.session.commit()
 
         return jsonify({
             'message': 'Assessment completed',
